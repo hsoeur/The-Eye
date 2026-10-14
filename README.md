@@ -4,9 +4,16 @@ Découverte (ping sweep + ARP + DNS/NetBIOS + scan de ports) et carte interactiv
 
 ## Lancer
 ```
-python eye.py                 # http://localhost:8765, re-scan toutes les 15 min
-python eye.py --port 9000 --auto 0
+python eye.py                       # http://localhost:8765
+python eye.py --port 9000 --auto 15 # re-scan réseau toutes les 15 min
+python eye.py --disable docker      # désactive un module
+python -m unittest discover -s tests
 ```
+Options : `--host --port --data-dir --log-level --auto --docker-actions --disable`. Config optionnelle : `data/config.json`.
+Santé : `GET /api/health` · modules : `GET /api/modules` · API des modules sous `/api/<module>/...`.
+
+**Architecture modulaire** (ajouter un module = un dossier dans `theeye/modules/`) : voir [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 Le CIDR est détecté automatiquement (sous-réseaux locaux ≤ /22) ou saisi dans l'UI.
 
 ## Supervision Docker

@@ -68,7 +68,7 @@ $ok = $false
 foreach ($i in 1..20) {
     Start-Sleep 3
     try {
-        $r = Invoke-WebRequest "http://localhost:$Port/api/state" -UseBasicParsing -TimeoutSec 5
+        $r = Invoke-WebRequest "http://localhost:$Port/api/health" -UseBasicParsing -TimeoutSec 5
         if ($r.StatusCode -eq 200) { $ok = $true; break }
     } catch { }
 }

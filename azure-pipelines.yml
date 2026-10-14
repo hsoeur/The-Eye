@@ -23,19 +23,22 @@ steps:
   - powershell: |
       # Contrôle facultatif : ignoré si Python / Node ne sont pas installés sur l'agent
       if (Get-Command python -ErrorAction SilentlyContinue) {
-        python -m py_compile eye.py hosts.py
+        python -m compileall -q eye.py theeye
+        if ($LASTEXITCODE) { exit 1 }
+        python -m unittest discover -s tests
         if ($LASTEXITCODE) { exit 1 }
       } else { Write-Host "Python absent de l'agent : contrôle Python ignoré" }
       if (Get-Command node -ErrorAction SilentlyContinue) {
-        Get-ChildItem static\*.js -Exclude vis-network.min.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE) { exit 1 } }
+        Get-ChildItem theeye -Recurse -Filter *.js | Where-Object { $_.FullName -notmatch '\\vendor\\' } | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE) { exit 1 } }
       }
     displayName: Vérification syntaxe
 
   - powershell: |
       $dst = "$(Build.ArtifactStagingDirectory)\TheEye"
       New-Item -ItemType Directory -Force $dst | Out-Null
-      Copy-Item eye.py, hosts.py, collect_win.ps1, oui.json, README.md $dst
-      Copy-Item static, deploy $dst -Recurse
+      Copy-Item eye.py, README.md $dst
+      Copy-Item theeye, docs, deploy $dst -Recurse
+      Get-ChildItem $dst -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
     displayName: Préparer le package
 
   - powershell: |
