@@ -35,6 +35,20 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
     Where-Object { $_.CommandLine -like "*$InstallDir*eye.py*" } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 
+# Libère le port quelle que soit l'origine de l'ancienne instance (lancée à la main, autre dossier, MVP…)
+$owners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
+foreach ($procId in $owners) {
+    if ($procId -gt 4) {
+        Write-Host "Port $Port occupé par le PID $procId : arrêt"
+        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+    }
+}
+foreach ($i in 1..10) {
+    if (-not (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) { break }
+    Start-Sleep 1
+}
+if (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue) { throw "Le port $Port reste occupé : impossible de déployer." }
+
 Write-Host "Copie des fichiers vers $InstallDir (data\ est conservé)"
 New-Item -ItemType Directory -Force $InstallDir | Out-Null
 robocopy $Source $InstallDir /MIR /XD data __pycache__ /XF *.pyc /NFL /NDL /NJH /NJS /NP | Out-Null
