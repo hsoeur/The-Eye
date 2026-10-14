@@ -1,78 +1,65 @@
-# Pipeline Azure DevOps (Server) - The Eye
-# Prérequis : un agent auto-hébergé installé sur le serveur de prod (192.168.1.104),
-# avec Python 3.9+ installé pour tous les utilisateurs, et un environnement "Production-Eye".
+# The Eye - build + déploiement sur le serveur de prod (Windows Server 2022, Docker Desktop)
+# Même principe que les autres pipelines : agent VM-DEVOPS -> pscp/plink vers le serveur.
+# Variable secrète à définir dans l'UI du pipeline (Variables > cocher "Keep this value secret") : SSH_PASSWORD
 trigger:
-  branches:
-    include: [main]
+  - main
+
+pool:
+  name: Default
+  demands:
+    - agent.name -equals VM-DEVOPS
 
 variables:
-  prodPool: Default            # pool contenant l'agent du serveur de prod
-  prodAgent: PROD-104          # nom de l'agent installé sur 192.168.1.104
-  installDir: C:\TheEye
-  eyePort: 8765
+  SERVER_USER: 'adminprod'
+  SERVER_IP: '192.168.1.104'
+  SERVER_PATH: 'C:\Deploy\TheEye'      # dossier de dépôt temporaire sur le serveur
+  INSTALL_PATH: 'C:\TheEye'            # dossier d'installation (data\ conservé entre les déploiements)
+  APP_PORT: '8765'                     # port d'écoute de The Eye
+  DOCKER_ACTIONS: 'false'              # true = boutons start/stop/restart des containers dans l'UI
 
-stages:
-  - stage: Build
-    displayName: Contrôle & package
-    jobs:
-      - job: Build
-        pool:
-          name: $(prodPool)
-          demands:
-            - Agent.Name -equals $(prodAgent)
-        steps:
-          - checkout: self
-          - powershell: |
-              python -m py_compile eye.py hosts.py
-              if ($LASTEXITCODE) { exit 1 }
-              if (Get-Command node -ErrorAction SilentlyContinue) {
-                Get-ChildItem static\*.js -Exclude vis-network.min.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE) { exit 1 } }
-              }
-            displayName: Vérification syntaxe
-          - task: CopyFiles@2
-            displayName: Préparer l'artefact
-            inputs:
-              SourceFolder: $(Build.SourcesDirectory)
-              Contents: |
-                eye.py
-                hosts.py
-                collect_win.ps1
-                oui.json
-                static/**
-                deploy/**
-                README.md
-              TargetFolder: $(Build.ArtifactStagingDirectory)
-          - publish: $(Build.ArtifactStagingDirectory)
-            artifact: eye
+steps:
+  - checkout: self
 
-  - stage: Deploy
-    displayName: Déploiement production
-    dependsOn: Build
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-    jobs:
-      - deployment: Prod
-        displayName: Déployer sur 192.168.1.104
-        environment: Production-Eye     # ajouter une approbation sur cet environnement si souhaité
-        pool:
-          name: $(prodPool)
-          demands:
-            - Agent.Name -equals $(prodAgent)
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - download: current
-                  artifact: eye
-                - powershell: |
-                    $p = @{ Source = "$(Pipeline.Workspace)\eye"; InstallDir = '$(installDir)'; Port = [int]'$(eyePort)' }
-                    # Variables optionnelles (secrètes) : eyeRunAsUser / eyeRunAsPassword / eyeDockerActions=true
-                    # Une variable non définie reste littéralement "$(nom)" : on l'ignore.
-                    $set = { param($v) $v -and $v -notlike '$(*' }
-                    if (& $set $env:EYE_RUNAS_USER) { $p.RunAsUser = $env:EYE_RUNAS_USER; $p.RunAsPassword = $(if (& $set $env:EYE_RUNAS_PASSWORD) { $env:EYE_RUNAS_PASSWORD } else { '' }) }
-                    if ($env:EYE_DOCKER_ACTIONS -eq 'true') { $p.DockerActions = $true }
-                    & "$(Pipeline.Workspace)\eye\deploy\deploy.ps1" @p
-                  displayName: Installer et démarrer The Eye
-                  env:
-                    EYE_RUNAS_USER: $(eyeRunAsUser)
-                    EYE_RUNAS_PASSWORD: $(eyeRunAsPassword)
-                    EYE_DOCKER_ACTIONS: $(eyeDockerActions)
+  - powershell: |
+      python -m py_compile eye.py hosts.py
+      if ($LASTEXITCODE) { exit 1 }
+      if (Get-Command node -ErrorAction SilentlyContinue) {
+        Get-ChildItem static\*.js -Exclude vis-network.min.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE) { exit 1 } }
+      }
+    displayName: Vérification syntaxe
+
+  - powershell: |
+      $dst = "$(Build.ArtifactStagingDirectory)\TheEye"
+      New-Item -ItemType Directory -Force $dst | Out-Null
+      Copy-Item eye.py, hosts.py, collect_win.ps1, oui.json, README.md $dst
+      Copy-Item static, deploy $dst -Recurse
+    displayName: Préparer le package
+
+  - powershell: |
+      $parent = (Split-Path '$(SERVER_PATH)' -Parent).Replace('\','/') + '/'
+      $target = "$(SERVER_USER)@$(SERVER_IP)"
+
+      # Enregistre l'empreinte SSH du serveur (première connexion)
+      'y' | plink -ssh $target -pw $env:SSH_PASSWORD exit 2>&1 | Out-Null
+
+      Write-Host "Nettoyage du dossier de dépôt"
+      plink -batch -ssh $target -pw $env:SSH_PASSWORD "powershell -NoProfile -Command `"Remove-Item -Recurse -Force '$(SERVER_PATH)' -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force '$(SERVER_PATH)' | Out-Null`""
+      if ($LASTEXITCODE) { throw "plink (nettoyage) a échoué" }
+
+      Write-Host "Envoi des fichiers"
+      pscp -batch -r -pw $env:SSH_PASSWORD "$(Build.ArtifactStagingDirectory)\TheEye" "${target}:$parent"
+      if ($LASTEXITCODE) { throw "pscp a échoué" }
+    displayName: Envoi sur le serveur
+    env:
+      SSH_PASSWORD: $(SSH_PASSWORD)
+
+  - powershell: |
+      $target = "$(SERVER_USER)@$(SERVER_IP)"
+      $dockerSwitch = if ('$(DOCKER_ACTIONS)' -eq 'true') { '-DockerActions' } else { '' }
+      # La tâche tourne sous le compte du serveur (accès à Docker Desktop)
+      $cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$(SERVER_PATH)\deploy\deploy.ps1`" -Source `"$(SERVER_PATH)`" -InstallDir `"$(INSTALL_PATH)`" -Port $(APP_PORT) -RunAsUser `"$(SERVER_USER)`" -RunAsPassword `"$env:SSH_PASSWORD`" $dockerSwitch"
+      plink -batch -ssh $target -pw $env:SSH_PASSWORD $cmd
+      if ($LASTEXITCODE) { throw "Le déploiement distant a échoué ($LASTEXITCODE)" }
+    displayName: Installer et démarrer The Eye
+    env:
+      SSH_PASSWORD: $(SSH_PASSWORD)
