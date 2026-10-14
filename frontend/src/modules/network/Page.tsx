@@ -77,7 +77,7 @@ export default function NetworkPage() {
           list={!all.length ? (
             <Empty icon={<Radar />} title="Aucun équipement découvert" hint="Lancez un scan pour cartographier automatiquement votre réseau." action={<Button variant="primary" onClick={scan}>Scanner le réseau</Button>} />
           ) : !visible.length ? <Empty title="Aucun résultat" hint="Aucun équipement ne correspond aux filtres." />
-          : view === "map" ? <div className="h-full min-h-[420px]"><NetworkMap devices={visible} subnets={data.subnets} selected={sel} onSelect={select} /></div>
+          : view === "map" ? <div className="h-full min-h-[420px]"><NetworkMap devices={visible} selected={sel} onSelect={select} /></div>
           : <DeviceTable rows={visible} sel={sel} now={data.now} onSelect={select} />}
           detail={selected && <DeviceDetail key={selected.ip} d={selected} ports={data.ports} now={data.now} onClose={() => select(null)} />}
         />
