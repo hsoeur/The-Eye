@@ -42,8 +42,14 @@ steps:
       $parent = (Split-Path '$(SERVER_PATH)' -Parent).Replace('\','/') + '/'
       $target = "$(SERVER_USER)@$(SERVER_IP)"
 
+      if ([string]::IsNullOrEmpty($env:SSH_PASSWORD) -or $env:SSH_PASSWORD -like '$(*') { throw "Variable secrète SSH_PASSWORD non définie sur ce pipeline" }
+
       # Enregistre l'empreinte SSH du serveur (première connexion)
-      'y' | plink -ssh $target -pw $env:SSH_PASSWORD exit 2>&1 | Out-Null
+      $ErrorActionPreference = 'Continue'
+      'y' | plink -ssh $target -pw $env:SSH_PASSWORD exit 2>&1 | ForEach-Object { Write-Host "$_" }
+      $ErrorActionPreference = 'Stop'
+      plink -batch -ssh $target -pw $env:SSH_PASSWORD "echo connexion OK"
+      if ($LASTEXITCODE) { throw "Connexion SSH refusée pour $target : vérifier SERVER_USER et SSH_PASSWORD" }
 
       Write-Host "Nettoyage du dossier de dépôt"
       plink -batch -ssh $target -pw $env:SSH_PASSWORD "powershell -NoProfile -Command `"Remove-Item -Recurse -Force '$(SERVER_PATH)' -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force '$(SERVER_PATH)' | Out-Null`""
