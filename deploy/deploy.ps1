@@ -39,6 +39,7 @@ Write-Host "Copie des fichiers vers $InstallDir (data\ est conservé)"
 New-Item -ItemType Directory -Force $InstallDir | Out-Null
 robocopy $Source $InstallDir /MIR /XD data __pycache__ /XF *.pyc /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy a échoué ($LASTEXITCODE)" }
+$global:LASTEXITCODE = 0 # robocopy renvoie 1 quand des fichiers sont copiés
 New-Item -ItemType Directory -Force "$InstallDir\data" | Out-Null
 
 Write-Host "Pare-feu : TCP $Port"
