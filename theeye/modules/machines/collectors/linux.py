@@ -1,4 +1,5 @@
 """Collecteur Linux via le client ssh (authentification par clé)."""
+import base64
 import os
 import re
 from typing import Any, Dict
@@ -98,8 +99,10 @@ class LinuxCollector(Collector):
                     '(ex. C:\\Users\\x\\.ssh\\id_ed25519) ou laissez le champ vide ; '
                     'l\'authentification par mot de passe n\'est pas supportée.')
             cmd += ["-i", host["key"]]
-        cmd += [f'{host.get("user") or "root"}@{host["ip"]}', "sh -s"]
-        r = self.runner.run(cmd, 45, input=SCRIPT)
+        b64 = base64.b64encode(SCRIPT.encode()).decode()
+        cmd += [f'{host.get("user") or "root"}@{host["ip"]}',
+                f'f=/tmp/.eye.$$; echo {b64} | base64 -d > $f; sh $f < /dev/null; rm -f $f']
+        r = self.runner.run(cmd, 45, input="")
         if not r.ok and not r.out.strip():
             raise CollectError((r.err.strip() or "SSH échoué")[:300])
         return parse(r.out)
