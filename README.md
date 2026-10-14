@@ -22,6 +22,8 @@ Onglet **🐳 Docker** : tous les containers (actifs/arrêtés), santé, CPU, RA
 Pour autoriser Start/Stop/Restart depuis l'UI : `python eye.py --docker-actions` (désactivé par défaut, car l'interface n'est pas authentifiée).
 
 ## Supervision de machines (onglet 🖥️ Machines)
+
+Procédure pas à pas : [docs/SUPERVISION-MACHINES-WINDOWS.md](docs/SUPERVISION-MACHINES-WINDOWS.md).
 Ajoutez une ou plusieurs machines par IP : CPU, mémoire, réseau, disques, **services** (avec détection des services auto arrêtés/en échec), top processus, ports en écoute, erreurs récentes des journaux, et historique des changements (service tombé, machine injoignable). Rafraîchi toutes les ~10 s, lecture seule.
 - **Windows** : via WinRM. Sur la cible : `Enable-PSRemoting -Force`. Depuis The Eye (hors domaine) : `Set-Item WSMan:\localhost\Client\TrustedHosts -Value "IP_CIBLE"`. Compte utilisateur membre de *Remote Management Users* (+ *Event Log Readers*). Le mot de passe est chiffré par DPAPI (lisible uniquement par le compte Windows qui lance The Eye) ; laissez vide pour utiliser ce compte (Kerberos/domaine). La machine locale est lue directement.
 - **Linux** : via le client `ssh` (OpenSSH, présent sur Server 2022 en option) en **authentification par clé** (clé de l'utilisateur ou chemin indiqué). Nécessite `systemctl`, `ss`, `journalctl` côté cible pour les services/ports/erreurs.
