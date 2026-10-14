@@ -2,21 +2,22 @@
 
 ## Principes
 
-- **Noyau minimal, modules autonomes** : le noyau (`theeye/core`) ne connaît aucun module ; chaque module (`theeye/modules/<id>`) embarque son backend **et** son interface.
-- **Aucune dépendance externe** (Python ≥ 3.9 stdlib uniquement, JS natif sans build).
+- **Noyau minimal, modules autonomes** : le noyau (`theeye/core`) ne connaît aucun module ; chaque module backend (`theeye/modules/<id>`) a son pendant frontend (`frontend/src/modules/<id>`), tous deux découverts automatiquement.
+- **Backend sans dépendance externe** (Python ≥ 3.9 stdlib). **Frontend** : React 18 + TypeScript + Vite, Tailwind CSS v4, Radix, TanStack Query, React Router, Recharts, React Flow, cmdk, sonner. Le build (`theeye/web`) est commité : aucun Node n'est requis pour exécuter ou déployer.
 - **Isolation des pannes** : un module qui plante au chargement/démarrage est désactivé, les autres continuent ; chaque job planifié est protégé.
-- **Contrats explicites** plutôt que couplage : routes, événements, santé, vue web.
+- **Contrats explicites** plutôt que couplage : routes, événements, santé, `FrontModule`.
 
 ```
 eye.py                      point d'entrée
 theeye/
   app.py                    assemblage (config, bus, scheduler, modules, serveur)
   core/                     config, storage, events, scheduler, process, http, module
-  modules/<id>/
-    __init__.py             classe Module (contrat)
-    service.py ...          logique métier
-    web/view.js             interface du module
-  web/                      shell (nav, routeur, thème) + boîte à outils UI
+  modules/<id>/             backend du module (classe Module, services)
+  web/                      build du frontend (généré, servi avec repli SPA)
+frontend/                   sources React/TypeScript
+  src/app/                  shell : layout, palette Ctrl+K, vue d'ensemble, registre de modules
+  src/components/ui/        kit UI (boutons, tables, dialogues, graphiques…)
+  src/modules/<id>/         interface du module (index.tsx + Page.tsx)
 tests/                      tests unittest
 ```
 
@@ -57,14 +58,20 @@ class PrintersModule(Module):
         return Health("ok", "2 imprimantes")
 ```
 
-2. Créer `theeye/modules/printers/web/view.js` :
+2. Créer `frontend/src/modules/printers/index.tsx` (découvert automatiquement) et `Page.tsx` :
 
-```js
-import { h, render } from "/js/core/dom.js";
-export default { mount(el, ctx) { render(el, h("p", null, "Imprimantes")); return ctx.poll(async () => { /* api */ }, 5000); } };
+```tsx
+import { Printer } from "lucide-react";
+import { lazy } from "react";
+import type { FrontModule } from "@/app/registry";
+
+const mod: FrontModule = { id: "printers", icon: Printer, Page: lazy(() => import("./Page")) };
+export default mod;
 ```
 
-3. Redémarrer : le module est **découvert automatiquement** ; navigation, vue d'ensemble, santé et événements l'incluent sans autre modification.
+`Page.tsx` exporte par défaut un composant ; il lit `/api/printers/state` via `usePoll`. Ses sous-routes passent par `useParams()["*"]`.
+
+3. `cd frontend; npm run build`, puis redémarrer : navigation, vue d'ensemble, santé, recherche Ctrl+K et événements incluent le module sans autre modification.
 
 ## Ajouter un type de machine supervisée
 
@@ -81,8 +88,11 @@ Ajouter un fichier dans `theeye/modules/machines/collectors/` avec une classe `C
 
 ## Contrat frontend
 
-`export default { mount(el, ctx) → cleanup }` ; `ctx` = `{ api, sub, navigate, toast, modules, poll(fn, ms), onRoute(fn) }`.
-Le DOM est construit avec `h()` (pas d'`innerHTML`) : pas d'injection XSS.
+`FrontModule { id, icon, Page (lazy), search? }` (`frontend/src/app/registry.ts`). La navigation n'affiche que les modules présents dans `/api/modules`. React échappe le contenu par défaut : pas d'injection XSS.
+
+## Développement frontend
+
+`cd frontend; npm install; npm run dev` (http://localhost:5173, proxy `/api` → 8765 ; lancer `python eye.py` à côté). `npm run build` régénère `theeye/web`.
 
 ## Tests
 

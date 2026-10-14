@@ -30,7 +30,7 @@ class App:
         self.router, self.static = Router(), StaticFiles()
         self.static.mount("/", WEB_DIR)
         self._core_routes()
-        self.manager.register(self.router, self.static)
+        self.manager.register(self.router)
         self.server = Server(settings.host, settings.port, self.router, self.static)
 
     def _core_routes(self) -> None:

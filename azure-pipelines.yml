@@ -29,9 +29,15 @@ steps:
         if ($LASTEXITCODE) { exit 1 }
       } else { Write-Host "Python absent de l'agent : contrôle Python ignoré" }
       if (Get-Command node -ErrorAction SilentlyContinue) {
-        Get-ChildItem theeye -Recurse -Filter *.js | Where-Object { $_.FullName -notmatch '\\vendor\\' } | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE) { exit 1 } }
-      }
-    displayName: Vérification syntaxe
+        # theeye/web est versionné ; on le reconstruit si Node est présent (sinon le build commité est utilisé)
+        Push-Location frontend
+        npm ci --no-audit --no-fund
+        if ($LASTEXITCODE) { exit 1 }
+        npm run build
+        if ($LASTEXITCODE) { exit 1 }
+        Pop-Location
+      } else { Write-Host "Node absent de l'agent : build commité de theeye/web utilisé" }
+    displayName: Vérification et build
 
   - powershell: |
       $dst = "$(Build.ArtifactStagingDirectory)\TheEye"

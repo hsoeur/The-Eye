@@ -1,6 +1,6 @@
 # 👁️ The Eye – cartographie réseau
 
-Découverte (ping sweep + ARP + DNS/NetBIOS + scan de ports) et carte interactive. Python 3.9+ sans dépendance, front vis-network embarqué (fonctionne hors-ligne).
+Découverte (ping sweep + ARP + DNS/NetBIOS + scan de ports), carte interactive, supervision Docker et machines. Backend Python 3.9+ sans dépendance ; interface React + TypeScript (build commité dans `theeye/web`, aucun Node requis pour lancer).
 
 ## Lancer
 ```
@@ -8,6 +8,7 @@ python eye.py                       # http://localhost:8765
 python eye.py --port 9000 --auto 15 # re-scan réseau toutes les 15 min
 python eye.py --disable docker      # désactive un module
 python -m unittest discover -s tests
+cd frontend; npm install; npm run dev   # UI en développement (http://localhost:5173) ; npm run build régénère theeye/web
 ```
 Options : `--host --port --data-dir --log-level --auto --docker-actions --disable`. Config optionnelle : `data/config.json`.
 Santé : `GET /api/health` · modules : `GET /api/modules` · API des modules sous `/api/<module>/...`.

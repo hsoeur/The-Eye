@@ -165,12 +165,14 @@ class Server:
         if method != "GET":
             raise HttpError(405, "méthode non autorisée")
         f = self.static.find(path)
+        if not f and "." not in path.rsplit("/", 1)[-1]:
+            f = self.static.find("/")  # repli SPA : le routeur côté client gère l'URL
         if not f:
             raise HttpError(404, "introuvable")
         ctype = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
         if ctype.startswith("text/") or ctype in ("application/javascript", "application/json"):
             ctype += "; charset=utf-8"
-        cache = "max-age=86400" if "vendor" in f.parts else "no-cache"
+        cache = "public, max-age=31536000, immutable" if path.startswith("/assets/") else "no-cache"
         return Response(200, f.read_bytes(), ctype, {"Cache-Control": cache})
 
     def serve_forever(self) -> None:

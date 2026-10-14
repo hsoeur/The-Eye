@@ -80,11 +80,6 @@ class Module:
     def health(self) -> Health:
         return Health()
 
-    @property
-    def web_dir(self) -> Optional[Path]:
-        d = Path(importlib.import_module(type(self).__module__).__file__).parent / "web"
-        return d if d.is_dir() else None
-
 
 def discover(package: str = "theeye.modules") -> List[Type[Module]]:
     pkg = importlib.import_module(package)
@@ -127,11 +122,9 @@ class ModuleManager:
             log.exception("module %s : %s en erreur", mod.id, action)
             self.errors[mod.id] = f"{action}: {e}"
 
-    def register(self, router: Router, static: StaticFiles) -> None:
+    def register(self, router: Router) -> None:
         for mod in self.modules.values():
             self._safe(mod, "routes", lambda m=mod: m.register_routes(router.scoped(f"/api/{m.id}")))
-            if mod.web_dir:
-                static.mount(f"/modules/{mod.id}/", mod.web_dir)
 
     def start(self) -> None:
         for mod in self.modules.values():
@@ -151,5 +144,5 @@ class ModuleManager:
             return Health("unknown", f"Indisponible ({e})"[:140]).to_dict()
 
     def manifest(self) -> List[Dict[str, Any]]:
-        return [{"id": m.id, "label": m.label, "entry": f"/modules/{m.id}/view.js",
+        return [{"id": m.id, "label": m.label,
                  "health": self.health(m)} for m in self.modules.values()]
