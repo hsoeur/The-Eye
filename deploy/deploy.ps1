@@ -14,6 +14,18 @@ if (-not $py -or $py -like '*\WindowsApps\*') {
     $py = Get-ChildItem 'C:\Program Files\Python3*\python.exe', 'C:\Program Files (x86)\Python3*\python.exe' -ErrorAction SilentlyContinue |
         Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
 }
+if (-not $py) {
+    foreach ($root in 'HKLM:\SOFTWARE\Python\PythonCore', 'HKCU:\SOFTWARE\Python\PythonCore') {
+        $k = Get-ChildItem $root -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+        $p = if ($k) { (Get-ItemProperty "$($k.PSPath)\InstallPath" -ErrorAction SilentlyContinue).ExecutablePath }
+        if ($p -and (Test-Path $p)) { $py = $p; break }
+    }
+}
+if (-not $py) {
+    Write-Host "Diagnostic : utilisateur = $env:USERNAME"
+    Write-Host "Diagnostic : Program Files = $(Get-ChildItem 'C:\Program Files' -Filter 'Python*' -ErrorAction SilentlyContinue | ForEach-Object Name)"
+    Write-Host "Diagnostic : PATH = $env:PATH"
+}
 if (-not $py) { throw "Python 3.9+ introuvable sur le serveur (installer Python pour tous les utilisateurs)." }
 Write-Host "Python : $py"
 
