@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>👁️ The Eye</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Segoe UI,sans-serif;background:#0b1020;color:#dfe6ff;display:flex;flex-direction:column;height:100vh}
+header{display:flex;gap:10px;align-items:center;padding:8px 14px;background:#121a33;border-bottom:1px solid #263257;flex-wrap:wrap}
+h1{font-size:18px;margin:0 10px 0 0}button,input,select{background:#1c2748;color:#dfe6ff;border:1px solid #33427a;border-radius:6px;padding:6px 10px;font-size:13px}
+button{cursor:pointer}button:hover{background:#2a3a70}
+#main{flex:1;display:flex;min-height:0}#net{flex:1;background:radial-gradient(circle at 50% 40%,#16204a,#0b1020)}
+#side{width:300px;background:#121a33;border-left:1px solid #263257;padding:12px;overflow:auto;font-size:13px}
+#bar{height:4px;background:#1c2748}#bar div{height:100%;width:0;background:#4fd1c5;transition:width .3s}
+.stat{display:inline-block;margin-right:10px;padding:3px 8px;border-radius:10px;background:#1c2748}
+.tag{display:inline-block;background:#26346a;border-radius:4px;padding:1px 6px;margin:1px;font-size:11px}
+h3{margin:8px 0 4px}label{display:block;margin-top:6px}
+#dock{flex:1;overflow:auto;padding:14px}#dsum{margin-bottom:12px}
+#dgrid .sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
+.stack{margin-bottom:18px}.shead{cursor:pointer;font-size:16px;font-weight:600;padding:8px 10px;margin-bottom:10px;background:#16204a;border-radius:8px;user-select:none}
+.shead .stat{font-size:12px;font-weight:400;margin-left:8px}
+.card{background:#121a33;border:1px solid #263257;border-left:5px solid #4fd1c5;border-radius:8px;padding:10px;font-size:12px}
+.card.stopped{border-left-color:#777;opacity:.7}.card.bad{border-left-color:#e5484d}.card h4{margin:0 0 4px;font-size:15px}
+.card small{color:#8d9bd0}.bw{height:8px;background:#1c2748;border-radius:4px;margin:2px 0 6px;overflow:hidden}.bw i{display:block;height:100%;background:#4fd1c5}
+.card canvas{width:100%;height:40px;background:#0b1020;border-radius:4px}.card button{padding:2px 8px;margin:6px 4px 0 0;font-size:12px}
+#hostv{flex:1;min-height:0}#hlist{width:270px;background:#121a33;border-right:1px solid #263257;padding:10px;overflow:auto}#hdet{flex:1;overflow:auto;padding:14px}
+.hi{padding:8px;margin-bottom:6px;border-radius:6px;background:#1c2748;cursor:pointer;border-left:4px solid #555;font-size:13px}.hi.sel{background:#2a3a70}.hi.ok{border-left-color:#4fd1c5}.hi.ko{border-left-color:#e5484d}
+.gauges{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:10px 0}.g{background:#121a33;border:1px solid #263257;border-radius:8px;padding:10px;font-size:12px}.g b{font-size:22px}
+table.t{width:100%;border-collapse:collapse;font-size:12px}table.t td,table.t th{padding:3px 6px;border-bottom:1px solid #263257;text-align:left}
+.pan{background:#121a33;border:1px solid #263257;border-radius:8px;padding:10px;margin-bottom:12px}.pan h3{margin-top:0}
+.r{color:#ff6b70}.o{color:#ffb454}.gr{color:#4fd1c5}
+#modal{position:fixed;inset:0;background:#000a;z-index:9}#modal>div{margin:4vh auto;width:85vw;height:90vh;background:#0b1020;border:1px solid #33427a;padding:12px;display:flex;flex-direction:column}
+#mlogs{flex:1;overflow:auto;background:#000;color:#9fe;font-size:12px;margin:0;padding:8px;white-space:pre-wrap}
+</style></head><body>
+<header><h1>👁️ The Eye</h1>
+<button id="tabnet">🗺️ Réseau</button><button id="tabdock">🐳 Docker</button><button id="tabhost">🖥️ Machines</button>
+<span id="netctl" style="display:contents">
+<button id="scan">🔍 Scanner</button>
+<input id="cidr" placeholder="CIDR (ex: 10.0.0.0/24) – vide = auto" size="26">
+<input id="q" placeholder="Rechercher…">
+<select id="f"><option value="">Tous types</option></select>
+<label style="margin:0"><input type="checkbox" id="off" checked> hors-ligne</label>
+<span id="stats"></span></span></header>
+<div id="bar"><div></div></div>
+<div id="main"><div id="net"></div><div id="side"><i>Cliquez sur une machine…</i></div></div>
+<div id="dock" style="display:none"><div id="dsum"></div><div id="dgrid"></div></div>
+<div id="hostv" style="display:none"><div id="hlist"></div><div id="hdet"></div></div>
+<div id="modal" style="display:none"><div><button id="mclose">✖</button><h3 id="mtitle"></h3><pre id="mlogs"></pre></div></div>
+<script src="vis-network.min.js"></script><script src="app.js"></script><script src="docker.js"></script><script src="hosts.js"></script></body></html>

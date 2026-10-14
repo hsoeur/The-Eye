@@ -1,0 +1,78 @@
+# Pipeline Azure DevOps (Server) - The Eye
+# Prérequis : un agent auto-hébergé installé sur le serveur de prod (192.168.1.104),
+# avec Python 3.9+ installé pour tous les utilisateurs, et un environnement "Production-Eye".
+trigger:
+  branches:
+    include: [main]
+
+variables:
+  prodPool: Default            # pool contenant l'agent du serveur de prod
+  prodAgent: PROD-104          # nom de l'agent installé sur 192.168.1.104
+  installDir: C:\TheEye
+  eyePort: 8765
+
+stages:
+  - stage: Build
+    displayName: Contrôle & package
+    jobs:
+      - job: Build
+        pool:
+          name: $(prodPool)
+          demands:
+            - Agent.Name -equals $(prodAgent)
+        steps:
+          - checkout: self
+          - powershell: |
+              python -m py_compile eye.py hosts.py
+              if ($LASTEXITCODE) { exit 1 }
+              if (Get-Command node -ErrorAction SilentlyContinue) {
+                Get-ChildItem static\*.js -Exclude vis-network.min.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE) { exit 1 } }
+              }
+            displayName: Vérification syntaxe
+          - task: CopyFiles@2
+            displayName: Préparer l'artefact
+            inputs:
+              SourceFolder: $(Build.SourcesDirectory)
+              Contents: |
+                eye.py
+                hosts.py
+                collect_win.ps1
+                oui.json
+                static/**
+                deploy/**
+                README.md
+              TargetFolder: $(Build.ArtifactStagingDirectory)
+          - publish: $(Build.ArtifactStagingDirectory)
+            artifact: eye
+
+  - stage: Deploy
+    displayName: Déploiement production
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: Prod
+        displayName: Déployer sur 192.168.1.104
+        environment: Production-Eye     # ajouter une approbation sur cet environnement si souhaité
+        pool:
+          name: $(prodPool)
+          demands:
+            - Agent.Name -equals $(prodAgent)
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: eye
+                - powershell: |
+                    $p = @{ Source = "$(Pipeline.Workspace)\eye"; InstallDir = '$(installDir)'; Port = [int]'$(eyePort)' }
+                    # Variables optionnelles (secrètes) : eyeRunAsUser / eyeRunAsPassword / eyeDockerActions=true
+                    # Une variable non définie reste littéralement "$(nom)" : on l'ignore.
+                    $set = { param($v) $v -and $v -notlike '$(*' }
+                    if (& $set $env:EYE_RUNAS_USER) { $p.RunAsUser = $env:EYE_RUNAS_USER; $p.RunAsPassword = $(if (& $set $env:EYE_RUNAS_PASSWORD) { $env:EYE_RUNAS_PASSWORD } else { '' }) }
+                    if ($env:EYE_DOCKER_ACTIONS -eq 'true') { $p.DockerActions = $true }
+                    & "$(Pipeline.Workspace)\eye\deploy\deploy.ps1" @p
+                  displayName: Installer et démarrer The Eye
+                  env:
+                    EYE_RUNAS_USER: $(eyeRunAsUser)
+                    EYE_RUNAS_PASSWORD: $(eyeRunAsPassword)
+                    EYE_DOCKER_ACTIONS: $(eyeDockerActions)
