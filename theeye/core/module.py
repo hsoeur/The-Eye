@@ -39,6 +39,7 @@ class Shared:
     bus: EventBus
     scheduler: Scheduler
     runner: Runner
+    manager: Any = None
 
 
 class Context:
@@ -51,6 +52,7 @@ class Context:
         self.scheduler = shared.scheduler
         self.runner = shared.runner
         self.bus = shared.bus
+        self._shared = shared
         self.log = logging.getLogger(f"eye.{module_id}")
 
     def store(self, name: str, default=dict) -> JsonStore:
@@ -58,6 +60,11 @@ class Context:
 
     def emit(self, kind: str, message: str, severity: str = "info", **data: Any) -> None:
         self.bus.publish(self.module_id, kind, message, severity, **data)
+
+    def collect_observations(self) -> List[Dict[str, Any]]:
+        """Mesures de tous les modules (voir Module.observations), pour le moteur d'alertes."""
+        manager = self._shared.manager
+        return manager.observations() if manager else []
 
 
 class Module:
@@ -79,6 +86,14 @@ class Module:
 
     def health(self) -> Health:
         return Health()
+
+    def observations(self) -> List[Dict[str, Any]]:
+        """Mesures courantes évaluables par le moteur d'alertes, sans que le module le connaisse.
+
+        Chaque mesure : {"source", "target", "name", "metric", "value": float, "item": str (optionnel)}.
+        `target` identifie l'objet supervisé (stable), `item` un sous-élément (disque, service...).
+        """
+        return []
 
 
 def discover(package: str = "theeye.modules") -> List[Type[Module]]:
@@ -104,6 +119,7 @@ class ModuleManager:
         self.shared = shared
         self.modules: Dict[str, Module] = {}
         self.errors: Dict[str, str] = {}
+        shared.manager = self
         disabled = set(shared.settings.disabled_modules)
         for cls in classes:
             if cls.id in disabled:
@@ -133,6 +149,18 @@ class ModuleManager:
     def stop(self) -> None:
         for mod in reversed(list(self.modules.values())):
             self._safe(mod, "stop", mod.stop)
+
+    def observations(self) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        for mod in self.modules.values():
+            if mod.id in self.errors:
+                continue
+            try:
+                for o in mod.observations():
+                    out.append({"source": mod.id, **o})
+            except Exception:
+                log.exception("observations() du module %s en erreur", mod.id)
+        return out
 
     def health(self, mod: Module) -> Dict[str, Any]:
         if mod.id in self.errors:

@@ -28,6 +28,9 @@ Ajoutez une ou plusieurs machines par IP : CPU, mémoire, réseau, disques, **se
 - **Windows** : via WinRM. Sur la cible : `Enable-PSRemoting -Force`. Depuis The Eye (hors domaine) : `Set-Item WSMan:\localhost\Client\TrustedHosts -Value "IP_CIBLE"`. Compte utilisateur membre de *Remote Management Users* (+ *Event Log Readers*). Le mot de passe est chiffré par DPAPI (lisible uniquement par le compte Windows qui lance The Eye) ; laissez vide pour utiliser ce compte (Kerberos/domaine). La machine locale est lue directement.
 - **Linux** : via le client `ssh` (OpenSSH, présent sur Server 2022 en option) en **authentification par clé** (clé de l'utilisateur ou chemin indiqué). Nécessite `systemctl`, `ss`, `journalctl` côté cible pour les services/ports/erreurs.
 
+## Alertes (onglet 🔔 Alertes)
+Moteur de seuils avec anti-rebond, gravités, acquittement avec commentaire, maintenance planifiée et historique complet (MySQL ou SQLite). Détails, création de la base MySQL et API : [docs/ALERTES-MYSQL.md](docs/ALERTES-MYSQL.md). Seule dépendance : le pilote PyMySQL, fourni hors-ligne dans `vendor/` et utilisé uniquement si MySQL est configuré.
+
 ## Windows Server 2022 (démarrage automatique)
 ```
 New-NetFirewallRule -DisplayName "The Eye" -Direction Inbound -Protocol TCP -LocalPort 8765 -Action Allow

@@ -32,6 +32,7 @@ class Request:
     def __init__(self, method: str, path: str, query: Dict[str, str], headers, raw: bytes):
         self.method, self.path, self.query, self.headers = method, path, query, headers
         self.params: Dict[str, str] = {}
+        self.client = ""
         self._raw = raw
 
     def json(self) -> Dict[str, Any]:
@@ -66,6 +67,7 @@ class Router:
 
     def get(self, pattern, handler): self.add("GET", pattern, handler)
     def post(self, pattern, handler): self.add("POST", pattern, handler)
+    def put(self, pattern, handler): self.add("PUT", pattern, handler)
     def delete(self, pattern, handler): self.add("DELETE", pattern, handler)
 
     def resolve(self, method: str, path: str) -> Tuple[Handler, Dict[str, str]]:
@@ -121,7 +123,7 @@ class Server:
                         raise HttpError(413, "requête trop volumineuse")
                     raw = self.rfile.read(length) if length else b""
                     resp = server._dispatch(method, parts.path, {k: v[0] for k, v in parse_qs(parts.query).items()},
-                                            self.headers, raw)
+                                            self.headers, raw, self.client_address[0])
                 except HttpError as e:
                     resp = Response(e.status, {"error": e.message})
                 except Exception:
@@ -141,6 +143,7 @@ class Server:
 
             def do_GET(self): self._serve("GET")
             def do_POST(self): self._serve("POST")
+            def do_PUT(self): self._serve("PUT")
             def do_DELETE(self): self._serve("DELETE")
 
         self.router, self.static = router, static
@@ -161,11 +164,11 @@ class Server:
     def port(self) -> int:
         return self.httpd.server_address[1]
 
-    def _dispatch(self, method, path, query, headers, raw) -> Response:
+    def _dispatch(self, method, path, query, headers, raw, client: str = "") -> Response:
         if path.startswith("/api/"):
             handler, params = self.router.resolve(method, path)
             req = Request(method, path, query, headers, raw)
-            req.params = params
+            req.params, req.client = params, client
             result = handler(req)
             if isinstance(result, Response):
                 return result

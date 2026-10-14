@@ -136,6 +136,35 @@ class MachineService:
         if was_ok:
             self._change(st, host, hid, "injoignable : " + error[:120], "critical", "host_down")
 
+    def observations(self) -> list:
+        """Mesures pour le moteur d'alertes ; une machine injoignable ne publie que `reachable`."""
+        out = []
+        with self.lock:
+            snapshot = [(hid, dict(h), self.live.get(hid)) for hid, h in self.hosts.items()]
+        for hid, host, st in snapshot:
+            if not st or st.get("ok") is None:
+                continue
+            base = {"target": hid, "name": host["name"]}
+            out.append({**base, "metric": "reachable", "value": 1.0 if st["ok"] else 0.0})
+            m = st.get("metrics")
+            if not st["ok"] or not m:
+                continue
+            out.append({**base, "metric": "cpu_pct", "value": float(m["cpu"])})
+            if m["mem_total"]:
+                out.append({**base, "metric": "mem_pct", "value": round(100 * m["mem_used"] / m["mem_total"], 1)})
+            for d in m["disks"]:
+                if d.get("total"):
+                    out.append({**base, "metric": "disk_free_pct", "item": d["name"],
+                                "value": round(100 * d["free"] / d["total"], 1)})
+                    out.append({**base, "metric": "disk_free_gb", "item": d["name"],
+                                "value": round(d["free"] / 1024 ** 3, 1)})
+            for s in m["services"]:
+                if s["state"] == "failed" or s.get("start") == "auto":
+                    fault = s["state"] == "failed" or s["state"] != "running"
+                    out.append({**base, "metric": "service_fault", "item": s["name"], "value": 1.0 if fault else 0.0})
+            out.append({**base, "metric": "errors_recent", "value": float(len(m["events"]))})
+        return out
+
     def counts(self) -> Dict[str, Any]:
         view = self.view()
         down = [h for h in view if h["ok"] is False]

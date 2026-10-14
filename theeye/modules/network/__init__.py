@@ -54,6 +54,12 @@ class NetworkModule(Module):
     def _forget(self, req: Request):
         self.service.forget(str(req.json().get("ip", "")))
 
+    def observations(self):
+        # Seuls les équipements nommés par l'utilisateur sont considérés comme à surveiller.
+        return [{"target": "net:" + d["ip"], "name": d["label"], "metric": "device_online",
+                 "value": 1.0 if d.get("online", True) else 0.0}
+                for d in self.service.snapshot()["devices"].values() if d.get("label")]
+
     def health(self) -> Health:
         s = self.service.snapshot()
         devs = list(s["devices"].values())

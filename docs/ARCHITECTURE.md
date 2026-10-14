@@ -73,6 +73,13 @@ export default mod;
 
 3. `cd frontend; npm run build`, puis redémarrer : navigation, vue d'ensemble, santé, recherche Ctrl+K et événements incluent le module sans autre modification.
 
+## Observations (alimenter le moteur d'alertes)
+Un module publie des mesures en surchargeant `Module.observations()` : liste de
+`{"target", "target_name", "item", "metric", "value"}` (`source` est ajouté par le gestionnaire ; erreurs isolées).
+Le module `alerts` les collecte via `ctx.collect_observations()` et les confronte à ses règles : aucune autre
+modification n'est nécessaire pour rendre une nouvelle métrique « alertable ». Le module `alerts` (moteur pur dans
+`engine.py`, historique SQL dans `store.py`, écriture différée dans `journal.py`) est décrit dans [ALERTES-MYSQL.md](ALERTES-MYSQL.md).
+
 ## Ajouter un type de machine supervisée
 
 Ajouter un fichier dans `theeye/modules/machines/collectors/` avec une classe `Collector` décorée `@register`

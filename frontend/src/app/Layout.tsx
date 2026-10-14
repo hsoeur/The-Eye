@@ -1,8 +1,9 @@
 import { Eye, LayoutDashboard, WifiOff } from "lucide-react";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { StatusDot, toneOf } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/card";
+import type { AlertsData } from "@/modules/alerts/types";
 import { usePoll } from "@/lib/usePoll";
 import type { Overview } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -18,8 +19,14 @@ export function Layout() {
   const { data, isError } = usePoll<Overview>("/api/overview", 5000);
   const [palette, setPalette] = useState(false);
   const modules = data?.modules ?? [];
-  const alerts = modules.filter((m) => m.health.status === "critical" || m.health.status === "warning");
-  const critical = modules.some((m) => m.health.status === "critical");
+  const hasAlerts = modules.some((m) => m.id === "alerts");
+  const { data: al } = usePoll<AlertsData>("/api/alerts", 5000, hasAlerts);
+  const faulty = modules.filter((m) => m.id !== "alerts" && (m.health.status === "critical" || m.health.status === "warning"));
+  const toHandle = hasAlerts ? al?.counts.to_handle ?? 0 : faulty.length;
+  const critical = hasAlerts ? (al?.counts.critical ?? 0) > 0 : modules.some((m) => m.health.status === "critical");
+  const stale = !!al && !!al.status.last_eval && Date.now() / 1000 - al.status.last_eval > al.status.interval * 4;
+
+  useEffect(() => { document.title = toHandle ? `(${toHandle}) The Eye` : "The Eye"; }, [toHandle]);
 
   return (
     <div className="flex h-full">
@@ -54,10 +61,12 @@ export function Layout() {
           <div className="ml-auto flex items-center gap-3">
             {isError ? (
               <span className="flex items-center gap-1.5 text-[13px] font-medium text-crit"><WifiOff className="size-4" />Serveur injoignable</span>
-            ) : alerts.length ? (
-              <NavLink to="/" className={cn("flex items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium", critical ? "bg-crit/12 text-crit" : "bg-warn/12 text-warn")}>
-                <StatusDot tone={critical ? "crit" : "warn"} />{alerts.length} alerte{alerts.length > 1 ? "s" : ""}
+            ) : toHandle ? (
+              <NavLink to={hasAlerts ? "/alerts" : "/"} className={cn("flex items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium", critical ? "bg-crit/12 text-crit" : "bg-warn/12 text-warn")}>
+                <StatusDot tone={critical ? "crit" : "warn"} />{toHandle} alerte{toHandle > 1 ? "s" : ""} à traiter
               </NavLink>
+            ) : stale ? (
+              <NavLink to="/alerts" className="flex items-center gap-2 rounded-md bg-warn/12 px-2.5 py-1 text-[13px] font-medium text-warn"><StatusDot tone="warn" />Supervision en retard</NavLink>
             ) : modules.length ? (
               <span className="flex items-center gap-2 text-[13px] text-muted"><StatusDot tone="ok" />Tout est opérationnel</span>
             ) : null}

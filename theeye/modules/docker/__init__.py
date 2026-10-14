@@ -89,6 +89,20 @@ class DockerModule(Module):
             return 500, {"ok": False, "out": (res.out + res.err)[-500:]}
         return {"ok": True}
 
+    def observations(self):
+        with self.lock:
+            d = dict(self.data)
+        if not d["t"]:
+            return []
+        out = [{"target": "docker-host", "name": "Hôte Docker", "metric": "docker_available",
+                "value": 1.0 if d["available"] else 0.0}]
+        for c in d["containers"]:
+            base = {"target": "container:" + c["name"], "name": "Container " + c["name"]}
+            out.append({**base, "metric": "container_fault", "value": 1.0 if c["fault"] else 0.0})
+            out.append({**base, "metric": "container_cpu_pct", "value": float(c.get("cpu") or 0)})
+            out.append({**base, "metric": "container_mem_pct", "value": float(c.get("mem_pct") or 0)})
+        return out
+
     def health(self) -> Health:
         with self.lock:
             d = dict(self.data)

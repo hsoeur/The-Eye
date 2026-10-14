@@ -34,6 +34,9 @@ class MachinesModule(Module):
         if not self.service.remove(req.params["id"]):
             raise HttpError(404, "machine inconnue")
 
+    def observations(self):
+        return self.service.observations()
+
     def health(self) -> Health:
         c = self.service.counts()
         stats = [{"label": "Machines", "value": c["total"]}, {"label": "Injoignables", "value": c["down"]},
