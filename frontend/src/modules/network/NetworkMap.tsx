@@ -1,7 +1,6 @@
-import { Background, BackgroundVariant, Controls, ControlButton, Handle, Panel, Position, ReactFlow, type Edge, type Node, type NodeChange, type NodeProps } from "@xyflow/react";
+import { Background, BackgroundVariant, Controls, Handle, Panel, Position, ReactFlow, type Edge, type Node, type NodeChange, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { LayoutGrid } from "lucide-react";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { TYPES, inNet, nameOf, typeInfo, type Device } from "./devices";
 
@@ -11,7 +10,7 @@ type GroupData = { type: string; count: number; online: number };
 type Pos = { x: number; y: number };
 
 const hidden = { opacity: 0, width: 1, height: 1, border: 0, minWidth: 0 } as const;
-const CELL_W = 196, CELL_H = 62, GAP = 14, MAX_ROW = 1250, STORE = "eye-map-positions", MODE = "eye-map-mode";
+const CELL_W = 196, CELL_H = 62, GAP = 14, MAX_ROW = 1250, MODE = "eye-map-mode";
 type Mode = "type" | "network";
 
 const DeviceNode = memo(({ data }: NodeProps<Node<DeviceData>>) => {
@@ -55,8 +54,6 @@ const HubNode = memo(({ data }: NodeProps<Node<HubData>>) => (
 
 const nodeTypes = { device: DeviceNode, group: GroupNode, hub: HubNode };
 const groupOf = (d: Device) => (d.type in TYPES ? d.type : "unknown");
-
-const load = (key: string): Record<string, Pos> => { try { return JSON.parse(localStorage.getItem(key) ?? "{}"); } catch { return {}; } };
 
 type Header = { id: string; kind: "group" | "hub"; type: string; label: string; x: number; y: number; count: number; online: number };
 
@@ -117,39 +114,22 @@ export function NetworkMap({ devices, subnets, selected, onSelect }: { devices: 
   const [mode, setMode] = useState<Mode>(() => (localStorage.getItem(MODE) === "network" ? "network" : "type"));
   const structure = mode + devices.map((d) => d.ip + d.type).join() + (mode === "network" ? subnets.join() : "");
   const { pos, headers, hubOf } = useMemo(() => (mode === "type" ? layoutType(devices) : layoutNetwork(devices, subnets)), [structure]); // eslint-disable-line react-hooks/exhaustive-deps
-  const store = `${STORE}:${mode}`;
-  const [all, setAll] = useState<Record<string, Record<string, Pos>>>({});
-  const moved = useMemo(() => all[mode] ?? load(store), [all, mode, store]);
-  const [epoch, setEpoch] = useState(0);
-
   const edges: Edge[] = useMemo(() => devices.map((d) => ({
     id: `e:${d.ip}`, source: hubOf(d), target: d.ip,
     style: { strokeWidth: d.is_gateway ? 2 : 1, strokeDasharray: mode === "type" ? "3 4" : undefined, opacity: 0.5 },
   })), [structure]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const nodes: Node[] = useMemo(() => [
-    ...headers.map((h) => ({ id: h.id, type: h.kind, position: moved[h.id] ?? { x: h.x, y: h.y }, selectable: false,
+    ...headers.map((h) => ({ id: h.id, type: h.kind, position: { x: h.x, y: h.y }, selectable: false,
       data: h.kind === "hub" ? { label: h.label, count: h.count } : { type: h.type, count: h.count, online: h.online } })),
-    ...devices.map((d) => ({ id: d.ip, type: "device", position: moved[d.ip] ?? pos.get(d.ip) ?? { x: 0, y: 0 }, data: { device: d, selected: d.ip === selected } })),
-  ], [devices, selected, pos, headers, moved]);
+    ...devices.map((d) => ({ id: d.ip, type: "device", position: pos.get(d.ip) ?? { x: 0, y: 0 }, data: { device: d, selected: d.ip === selected } })),
+  ], [devices, selected, pos, headers]);
 
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setAll((a) => {
-      let cur = a[mode] ?? load(store);
-      let dirty = false;
-      for (const c of changes) if (c.type === "position" && c.position) { cur = { ...cur, [c.id]: c.position }; dirty = true; }
-      return dirty ? { ...a, [mode]: cur } : a;
-    });
-  }, [mode, store]);
-
-  const persist = useCallback(() => { setAll((a) => { if (a[mode]) localStorage.setItem(store, JSON.stringify(a[mode])); return a; }); }, [store, mode]);
-  const reset = () => { localStorage.removeItem(store); setAll((a) => ({ ...a, [mode]: {} })); setEpoch((e) => e + 1); };
   const pick = (m: Mode) => { localStorage.setItem(MODE, m); setMode(m); };
 
   return (
-    <ReactFlow key={structure + epoch} nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.12 }} minZoom={0.15} maxZoom={1.8}
-      nodesDraggable nodesConnectable={false} elementsSelectable proOptions={{ hideAttribution: true }}
-      onNodesChange={onNodesChange} onNodeDragStop={persist}
+    <ReactFlow key={structure} nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.12 }} minZoom={0.15} maxZoom={1.8}
+      nodesDraggable={false} nodesConnectable={false} elementsSelectable proOptions={{ hideAttribution: true }}
       onNodeClick={(_, n) => n.type === "device" && onSelect(n.id)} onPaneClick={() => onSelect(null)}>
       <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="var(--border)" />
       <Panel position="top-left">
@@ -159,9 +139,7 @@ export function NetworkMap({ devices, subnets, selected, onSelect }: { devices: 
           ))}
         </div>
       </Panel>
-      <Controls showInteractive={false}>
-        <ControlButton onClick={reset} title="Réorganiser automatiquement" aria-label="Réorganiser automatiquement"><LayoutGrid /></ControlButton>
-      </Controls>
+      <Controls showInteractive={false} />
     </ReactFlow>
   );
 }
