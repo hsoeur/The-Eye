@@ -21,8 +21,11 @@ steps:
   - checkout: self
 
   - powershell: |
-      python -m py_compile eye.py hosts.py
-      if ($LASTEXITCODE) { exit 1 }
+      # Contrôle facultatif : ignoré si Python / Node ne sont pas installés sur l'agent
+      if (Get-Command python -ErrorAction SilentlyContinue) {
+        python -m py_compile eye.py hosts.py
+        if ($LASTEXITCODE) { exit 1 }
+      } else { Write-Host "Python absent de l'agent : contrôle Python ignoré" }
       if (Get-Command node -ErrorAction SilentlyContinue) {
         Get-ChildItem static\*.js -Exclude vis-network.min.js | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE) { exit 1 } }
       }
