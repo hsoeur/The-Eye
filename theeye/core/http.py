@@ -144,8 +144,18 @@ class Server:
             def do_DELETE(self): self._serve("DELETE")
 
         self.router, self.static = router, static
-        self.httpd = ThreadingHTTPServer((host, port), _Handler)
-        self.httpd.daemon_threads = True
+        class _Httpd(ThreadingHTTPServer):
+            # Sous Windows, SO_REUSEADDR autorise deux processus sur le même port : on sert alors une vieille instance sans le savoir.
+            allow_reuse_address = False
+            daemon_threads = True
+
+        try:
+            self.httpd = _Httpd((host, port), _Handler)
+        except OSError:
+            if not port:
+                raise
+            log.warning("port %s déjà utilisé (autre instance ?) : choix d'un port libre", port)
+            self.httpd = _Httpd((host, 0), _Handler)
 
     @property
     def port(self) -> int:
