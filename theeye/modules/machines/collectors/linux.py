@@ -15,7 +15,7 @@ echo "##nproc"; nproc
 echo "##mem"; grep -E '^(MemTotal|MemAvailable):' /proc/meminfo
 echo "##disk"; df -P -B1 -x tmpfs -x devtmpfs -x overlay -x squashfs 2>/dev/null | tail -n +2
 echo "##net"; tail -n +3 /proc/net/dev
-echo "##procs"; ps -eo pid,comm,%cpu,rss --sort=-rss 2>/dev/null | head -16
+echo "##procs"; ps -eo pid,%cpu,rss,comm --sort=-rss 2>/dev/null | head -16
 echo "##count"; ps -e --no-headers | wc -l
 echo "##services"; systemctl list-units --type=service --all --no-legend --no-pager --plain 2>/dev/null
 echo "##ports"; ss -tlnH 2>/dev/null | awk '{print $4}'
@@ -58,7 +58,7 @@ def parse(txt: str) -> Dict[str, Any]:
     for l in g("procs")[1:]:
         p = l.split(None, 3)
         if len(p) == 4:
-            procs.append({"pid": int(p[0]), "name": p[1], "cpu": float(p[2]), "mem": float(p[3]) * 1024})
+            procs.append({"pid": int(p[0]), "name": p[3], "cpu": float(p[1]), "mem": float(p[2]) * 1024})
     services = []
     for l in g("services"):
         p = l.split(None, 4)
