@@ -10,7 +10,12 @@ $ErrorActionPreference = 'Stop'
 $task = 'TheEye'
 
 $py = (Get-Command python.exe -ErrorAction SilentlyContinue).Source
+if (-not $py -or $py -like '*\WindowsApps\*') {
+    $py = Get-ChildItem 'C:\Program Files\Python3*\python.exe', 'C:\Program Files (x86)\Python3*\python.exe' -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+}
 if (-not $py) { throw "Python 3.9+ introuvable sur le serveur (installer Python pour tous les utilisateurs)." }
+Write-Host "Python : $py"
 
 Write-Host "Arrêt de l'ancienne instance"
 Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
