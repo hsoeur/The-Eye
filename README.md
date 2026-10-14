@@ -30,6 +30,13 @@ Ajoutez une ou plusieurs machines par IP : CPU, mémoire, réseau, disques, **se
 
 ## Alertes (onglet 🔔 Alertes)
 Moteur de seuils avec anti-rebond, gravités, acquittement avec commentaire, maintenance planifiée et historique complet (MySQL ou SQLite). Détails, création de la base MySQL et API : [docs/ALERTES-MYSQL.md](docs/ALERTES-MYSQL.md). Seule dépendance : le pilote PyMySQL, fourni hors-ligne dans `vendor/` et utilisé uniquement si MySQL est configuré.
+
+## Coffre (onglet 🔑 Coffre)
+Mots de passe des comptes de production, avec les machines / postes / usages où ils servent. Dépendance : `pip install cryptography` (sans elle le module signale l'erreur, le reste fonctionne).
+- Secrets chiffrés au repos (AES-256-GCM) dans `data/vault.json` ; clé dérivée (scrypt) d'une **phrase secrète jamais stockée** — perdue, les secrets sont irrécupérables. Sauvegarder `data/vault.json`.
+- Verrouillé au démarrage et après inactivité (`modules.vault.auto_lock_min`, défaut 10). Afficher un secret exige de re-saisir la phrase ; chaque accès est audité (onglet Audit, jamais le secret). Anti-force brute : délai croissant après échec.
+- Alerte possible via la mesure `vault_stale_secrets` (comptes non changés depuis `modules.vault.rotation_days`, défaut 90).
+- ⚠️ L'application n'a pas d'authentification utilisateur : le déverrouillage vaut pour tous les clients connectés. Servir en HTTPS (reverse proxy) et restreindre l'accès réseau.
 
 ## Windows Server 2022 (démarrage automatique)
 ```
