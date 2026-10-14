@@ -10,7 +10,7 @@ pool:
     - agent.name -equals VM-DEVOPS
 
 variables:
-  SERVER_USER: 'adminprod'
+  SERVER_USER: 'AdminDMZ'
   SERVER_IP: '192.168.1.104'
   SERVER_PATH: 'C:\Deploy\TheEye'      # dossier de dépôt temporaire sur le serveur
   INSTALL_PATH: 'C:\TheEye'            # dossier d'installation (data\ conservé entre les déploiements)
