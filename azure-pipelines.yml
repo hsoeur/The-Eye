@@ -1,6 +1,7 @@
 # The Eye - build + déploiement sur le serveur de prod (Windows Server 2022, Docker Desktop)
 # Même principe que les autres pipelines : agent VM-DEVOPS -> pscp/plink vers le serveur.
 # Variable secrète à définir dans l'UI du pipeline (Variables > cocher "Keep this value secret") : SSH_PASSWORD
+# (mot de passe de SERVER_USER, aussi utilisé pour la tâche planifiée sous RUN_AS_USER : même mot de passe requis)
 trigger:
   - main
 
@@ -11,6 +12,7 @@ pool:
 
 variables:
   SERVER_USER: 'AdminDMZ'
+  RUN_AS_USER: 'adminprod'             # compte sous lequel tourne The Eye (propriétaire de la clé SSH Linux)
   SERVER_IP: '192.168.1.104'
   SERVER_PATH: 'C:\Deploy\TheEye'      # dossier de dépôt temporaire sur le serveur
   INSTALL_PATH: 'C:\TheEye'            # dossier d'installation (data\ conservé entre les déploiements)
@@ -76,9 +78,9 @@ steps:
   - powershell: |
       $target = "$(SERVER_USER)@$(SERVER_IP)"
       $dockerSwitch = if ('$(DOCKER_ACTIONS)' -eq 'true') { '-DockerActions' } else { '' }
-      # La tâche tourne sous le compte du serveur (accès à Docker Desktop)
+      # La tâche tourne sous le compte de prod RUN_AS_USER (accès à Docker Desktop et à la clé SSH Linux)
       $pw = $env:SSH_PASSWORD.Replace("'", "''")
-      $script = "& '$(SERVER_PATH)\deploy\deploy.ps1' -Source '$(SERVER_PATH)' -InstallDir '$(INSTALL_PATH)' -Port $(APP_PORT) -RunAsUser '$(SERVER_USER)' -RunAsPassword '$pw' $dockerSwitch; exit `$LASTEXITCODE"
+      $script = "& '$(SERVER_PATH)\deploy\deploy.ps1' -Source '$(SERVER_PATH)' -InstallDir '$(INSTALL_PATH)' -Port $(APP_PORT) -RunAsUser '$(RUN_AS_USER)' -RunAsPassword '$pw' $dockerSwitch; exit `$LASTEXITCODE"
       $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
       plink -batch -ssh $target -pw $env:SSH_PASSWORD "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $enc"
       if ($LASTEXITCODE) { throw "Le déploiement distant a échoué ($LASTEXITCODE)" }

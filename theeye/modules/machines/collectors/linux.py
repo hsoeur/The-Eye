@@ -1,4 +1,5 @@
 """Collecteur Linux via le client ssh (authentification par clé)."""
+import os
 import re
 from typing import Any, Dict
 
@@ -91,6 +92,11 @@ class LinuxCollector(Collector):
     def collect(self, host: Dict[str, Any]) -> Dict[str, Any]:
         cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", "-o", "StrictHostKeyChecking=accept-new"]
         if host.get("key"):
+            if not os.path.isfile(host["key"]):
+                raise CollectError(
+                    f'Clé SSH introuvable : « {host["key"]} ». Indiquez le chemin complet du fichier de clé privée '
+                    '(ex. C:\\Users\\x\\.ssh\\id_ed25519) ou laissez le champ vide ; '
+                    'l\'authentification par mot de passe n\'est pas supportée.')
             cmd += ["-i", host["key"]]
         cmd += [f'{host.get("user") or "root"}@{host["ip"]}', "sh -s"]
         r = self.runner.run(cmd, 45, input=SCRIPT)
