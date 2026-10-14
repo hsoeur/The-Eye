@@ -52,7 +52,9 @@ steps:
       if ($LASTEXITCODE) { throw "Connexion SSH refusée pour $target : vérifier SERVER_USER et SSH_PASSWORD" }
 
       Write-Host "Nettoyage du dossier de dépôt"
-      plink -batch -ssh $target -pw $env:SSH_PASSWORD "powershell -NoProfile -Command `"Remove-Item -Recurse -Force '$(SERVER_PATH)' -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force '$(SERVER_PATH)' | Out-Null`""
+      $clean = "Remove-Item -Recurse -Force '$(SERVER_PATH)' -ErrorAction SilentlyContinue; `$null = New-Item -ItemType Directory -Force '$(SERVER_PATH)'"
+      $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($clean))
+      plink -batch -ssh $target -pw $env:SSH_PASSWORD "powershell -NoProfile -NonInteractive -EncodedCommand $enc"
       if ($LASTEXITCODE) { throw "plink (nettoyage) a échoué" }
 
       Write-Host "Envoi des fichiers"
@@ -66,8 +68,10 @@ steps:
       $target = "$(SERVER_USER)@$(SERVER_IP)"
       $dockerSwitch = if ('$(DOCKER_ACTIONS)' -eq 'true') { '-DockerActions' } else { '' }
       # La tâche tourne sous le compte du serveur (accès à Docker Desktop)
-      $cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$(SERVER_PATH)\deploy\deploy.ps1`" -Source `"$(SERVER_PATH)`" -InstallDir `"$(INSTALL_PATH)`" -Port $(APP_PORT) -RunAsUser `"$(SERVER_USER)`" -RunAsPassword `"$env:SSH_PASSWORD`" $dockerSwitch"
-      plink -batch -ssh $target -pw $env:SSH_PASSWORD $cmd
+      $pw = $env:SSH_PASSWORD.Replace("'", "''")
+      $script = "& '$(SERVER_PATH)\deploy\deploy.ps1' -Source '$(SERVER_PATH)' -InstallDir '$(INSTALL_PATH)' -Port $(APP_PORT) -RunAsUser '$(SERVER_USER)' -RunAsPassword '$pw' $dockerSwitch; exit `$LASTEXITCODE"
+      $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
+      plink -batch -ssh $target -pw $env:SSH_PASSWORD "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $enc"
       if ($LASTEXITCODE) { throw "Le déploiement distant a échoué ($LASTEXITCODE)" }
     displayName: Installer et démarrer The Eye
     env:
