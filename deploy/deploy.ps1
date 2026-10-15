@@ -33,7 +33,7 @@ Write-Host "Arrêt de l'ancienne instance"
 Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
 Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
     Where-Object { $_.CommandLine -like "*$InstallDir*eye.py*" } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
 # Libère le port quelle que soit l'origine de l'ancienne instance (lancée à la main, autre dossier, MVP…)
 $owners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
