@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Container as ContainerIcon, Play, RotateCw, ScrollText, Square, TriangleAlert } from "lucide-react";
+import { ChevronDown, ChevronRight, CircleCheck, Container as ContainerIcon, LoaderCircle, OctagonX, Play, RotateCw, ScrollText, Square, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -56,6 +56,51 @@ interface Watchdog {
 }
 const ENGINE: Record<string, [string, Tone]> = { healthy: ["Sain", "ok"], degraded: ["Dégradé", "warn"], hung: ["Figé", "crit"], recovering: ["Rétablissement", "warn"] };
 
+const BANNER: Record<string, { icon: typeof CircleCheck; box: string; title: string; text: (d: Watchdog) => string }> = {
+  healthy: { icon: CircleCheck, box: "border-ok/50 bg-ok/10 text-ok", title: "Moteur Docker opérationnel",
+    text: (d) => `Il répond normalement${d.latency_s != null ? ` (${d.latency_s.toFixed(1)} s)` : ""}. Aucune action requise.` },
+  degraded: { icon: TriangleAlert, box: "border-warn/60 bg-warn/10 text-warn", title: "Moteur Docker dégradé",
+    text: (d) => `Il répond lentement ou par intermittence${d.last?.detail && d.last.kind !== "ok" ? ` : ${d.last.detail}` : ""}. Surveillance renforcée.` },
+  hung: { icon: OctagonX, box: "border-crit/60 bg-crit/10 text-crit", title: "Moteur Docker FIGÉ",
+    text: (d) => `Il ne répond plus${d.last?.detail ? ` : ${d.last.detail}` : ""}. ${d.recoveries.enabled && d.recoveries.local ? "Relance automatique armée." : "Relance automatique inactive : intervention manuelle nécessaire."}` },
+  recovering: { icon: LoaderCircle, box: "border-warn/60 bg-warn/10 text-warn", title: "Moteur Docker en cours de rétablissement",
+    text: () => "Il répond de nouveau ou a été relancé ; confirmation en cours." },
+};
+const KIND_BOX: Record<string, string> = { ok: "bg-ok", slow: "bg-warn", fail: "bg-crit" };
+
+function Banner({ d }: { d: Watchdog }) {
+  const b = BANNER[d.state] ?? BANNER.healthy, Icon = b.icon, rec = d.recoveries;
+  const probes = d.history.slice(-40);
+  return (
+    <div className={`rounded-lg border-2 p-5 ${b.box}`} role="status" aria-live="polite">
+      <div className="flex flex-wrap items-center gap-4">
+        <Icon className={`size-12 shrink-0 ${d.state === "recovering" ? "animate-spin" : d.state === "hung" ? "pulse-crit" : ""}`} />
+        <div className="min-w-0 flex-1">
+          <div className="text-2xl font-semibold leading-tight">{b.title}</div>
+          <div className="mt-1 text-sm text-fg">{b.text(d)}</div>
+          <div className="mt-1 text-xs text-muted">
+            {d.state === "healthy" ? "Sain" : "Dans cet état"} depuis {ago(d.state === "hung" && d.hung_since ? d.hung_since : d.since, d.now)}
+            {d.last ? ` · dernière sonde ${ago(d.last.t, d.now)}` : ""}
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-1 text-sm text-fg">
+          <span className="rounded bg-bg/60 px-2 py-1 font-medium">Relance auto : {rec.enabled ? (rec.local ? "ACTIVÉE" : "indisponible") : "désactivée"}</span>
+          {rec.current?.state === "running" && <span className="rounded bg-warn/20 px-2 py-1 font-medium text-warn">Relance en cours…</span>}
+          {rec.note && d.state === "hung" && <span className="max-w-64 text-right text-xs text-muted">{rec.note}</span>}
+        </div>
+      </div>
+      {probes.length > 0 && (
+        <div className="mt-4 flex items-center gap-2">
+          <span className="text-xs text-muted">Dernières sondes</span>
+          <div className="flex gap-0.5">
+            {probes.map(([t, lat, kind]) => <i key={t} title={`${kind} · ${lat.toFixed(2)} s · ${ago(t, d.now)}`} className={`h-4 w-1.5 rounded-sm ${KIND_BOX[kind] ?? "bg-faint"}`} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Engine() {
   const { data, isLoading } = usePoll<Watchdog>("/api/docker/watchdog", 5000);
   const qc = useQueryClient();
@@ -87,8 +132,9 @@ function Engine() {
       {data.config.ignored && (data.config.ignored as string[]).length > 0 && (
         <Badge tone="warn"><TriangleAlert className="size-3" />Configuration ignorée : {(data.config.ignored as string[]).join(", ")}</Badge>
       )}
+      <Banner d={data} />
       <div>
-        <div className="mb-1 text-xs text-muted">Latence de la sonde (s){data.last?.detail && data.last.kind !== "ok" ? ` · dernier message : ${data.last.detail}` : ""}</div>
+        <div className="mb-1 text-xs text-muted">Latence de la sonde (s)</div>
         <TimeChart data={chart} format={(v) => `${v.toFixed(1)} s`} series={[{ key: "latency", label: "Latence", color: "var(--accent)" }]} />
       </div>
       <KV rows={[
