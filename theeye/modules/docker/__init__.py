@@ -14,8 +14,8 @@ from ...core.module import Health, Module
 from .client import ACTIONS, ID_RE, DockerClient, DockerUnavailable
 from .incident import PS_UTF8, IncidentCapture
 from .recovery import Recoverer
-from .watchdog import (DEGRADED, HEALTHY, HUNG, PROBE_CMD, RECOVERING, STATE_CODES, RecoveryGuard, Watchdog,
-                       WatchdogConfig, classify, docker_is_local)
+from .watchdog import (DEGRADED, FAIL, HEALTHY, HUNG, LIST_CMD, OK, PROBE_CMD, RECOVERING, SLOW, STATE_CODES,
+                       RecoveryGuard, Watchdog, WatchdogConfig, classify, classify_listing, docker_is_local)
 
 HISTORY_POINTS = 90
 RECOVERY_TIMEOUT_S = 600.0
@@ -65,8 +65,15 @@ class DockerModule(Module):
     def watch(self) -> None:
         t0 = time.monotonic()
         r = self.ctx.runner.run(PROBE_CMD, self.cfg.probe_timeout_s)
+        kind, detail = classify(r, time.monotonic() - t0, self.cfg)
+        if kind != FAIL:
+            r2 = self.ctx.runner.run(LIST_CMD, self.cfg.probe_timeout_s)
+            why = classify_listing(r2, self.cfg)
+            if why:
+                kind, detail, r = FAIL, why, r2
         dt = time.monotonic() - t0
-        kind, detail = classify(r, dt, self.cfg)
+        if kind == OK and dt > self.cfg.slow_threshold_s:
+            kind = SLOW
         self.wd.record(kind, dt, detail, r.code)
         if self.wd.take_capture():
             self.ctx.scheduler.submit(self._capture_auto)

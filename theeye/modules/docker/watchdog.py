@@ -17,6 +17,7 @@ HEALTHY, DEGRADED, HUNG, RECOVERING = "healthy", "degraded", "hung", "recovering
 STATE_CODES = {HEALTHY: 0, DEGRADED: 1, HUNG: 2, RECOVERING: 3}
 OK, SLOW, FAIL = "ok", "slow", "fail"
 PROBE_CMD = ["docker", "version", "--format", "{{.Server.Version}}"]
+LIST_CMD = ["docker", "ps", "-q"]
 VERSION_RE = re.compile(r"\d+\.\d+")
 HISTORY_POINTS = 120
 RECOVERY_GRACE_S = 300.0  # après une relance, les échecs de sonde ne comptent pas (Docker redémarre)
@@ -98,6 +99,15 @@ def classify(r: Result, latency: float, cfg: WatchdogConfig) -> Tuple[str, str]:
     if not VERSION_RE.match(version):
         return FAIL, "réponse inattendue : " + version[:80]
     return (SLOW if latency > cfg.slow_threshold_s else OK), version
+
+
+def classify_listing(r: Result, cfg: WatchdogConfig) -> Optional[str]:
+    """Résultat de `docker ps -q` (sonde profonde) -> None si correct, sinon le motif de l'échec."""
+    if r.code == TIMEOUT:
+        return f"docker ps : délai dépassé ({cfg.probe_timeout_s:.0f} s)"
+    if r.code != 0:
+        return "docker ps : " + (" ".join((r.err or r.out).split())[:160] or f"code {r.code}")
+    return None
 
 
 def docker_is_local(environ: Optional[Mapping[str, str]] = None, os_name: Optional[str] = None) -> Tuple[bool, str]:

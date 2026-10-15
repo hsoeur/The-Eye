@@ -20,7 +20,17 @@ MAX_LOG_FILES = 200
 MAX_TEXT_BYTES = 5 * 1024 * 1024
 DOCKER_BUDGET_S = 20.0
 DOCKER_CMD_TIMEOUT_S = 7.0
-PS_UTF8 = "[Console]::OutputEncoding = [Text.Encoding]::UTF8\n$ErrorActionPreference = 'SilentlyContinue'\n"
+PS_UTF8 = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8\n$ErrorActionPreference = 'SilentlyContinue'\n"
+           "$ProgressPreference = 'SilentlyContinue'\n")
+CLIXML_ERR_RE = re.compile(r'<S S="Error">(.*?)</S>', re.S)
+
+
+def ps_error(r: Any, limit: int = 200) -> str:
+    """Message d'erreur lisible d'un résultat PowerShell (le flux CLIXML de progression est écarté)."""
+    text = (r.err or "").strip()
+    if text.startswith("#< CLIXML"):
+        text = " ".join(m.replace("_x000D__x000A_", " ") for m in CLIXML_ERR_RE.findall(text)).strip()
+    return " ".join((text or (r.out or "").strip()).split())[:limit] or f"code {r.code}"
 
 EVENTS_PS = PS_UTF8 + r"""
 $since = (Get-Date).AddHours(-3)
@@ -147,9 +157,9 @@ class IncidentCapture:
     def _events(self, dest: Path) -> str:
         if os.name != "nt":
             return "ignoré (hors Windows)"
-        r = self.runner.powershell(EVENTS_PS, 60)
-        if not r.ok:
-            raise RuntimeError((r.err or r.out).strip()[:200] or f"code {r.code}")
+        r = self.runner.powershell(EVENTS_PS, 90)
+        if not r.ok and not r.out.lstrip().startswith('"Time"'):
+            raise RuntimeError(ps_error(r))
         return self._write(dest / "events.csv", r.out)
 
     # --- système --------------------------------------------------------------------------------------------------
@@ -169,7 +179,7 @@ class IncidentCapture:
                 return "(ignoré : hors Windows)"
             r = self.runner.powershell(script, timeout)
             if not r.ok:
-                raise RuntimeError((r.err or r.out).strip()[:200] or f"code {r.code}")
+                raise RuntimeError(ps_error(r))
             return r.out
 
         def wsl() -> str:

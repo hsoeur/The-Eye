@@ -1,14 +1,15 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
 from theeye.core.process import NOT_FOUND, TIMEOUT, Result
 from theeye.modules.alerts.rules import Rule, default_rules, docker_watchdog_rules
-from theeye.modules.docker.incident import IncidentCapture
+from theeye.modules.docker.incident import IncidentCapture, ps_error
 from theeye.modules.docker.recovery import Recoverer
 from theeye.modules.docker.watchdog import (DEGRADED, FAIL, HEALTHY, HUNG, OK, RECOVERING, SLOW, RecoveryGuard,
-                                            Watchdog, WatchdogConfig, classify, docker_is_local)
+                                            Watchdog, WatchdogConfig, classify, classify_listing, docker_is_local)
 
 
 class Clock:
@@ -228,6 +229,35 @@ class Incident(unittest.TestCase):
             for _ in range(4):
                 cap.capture("x", HUNG, [])
             self.assertEqual(len(cap.list_incidents(10)), 2)
+
+
+class Listing(unittest.TestCase):
+    cfg = WatchdogConfig()
+
+    def test_listing_probe(self):
+        self.assertIsNone(classify_listing(Result(0, ""), self.cfg))
+        self.assertIsNone(classify_listing(Result(0, "abc123\n"), self.cfg))
+        self.assertIn("délai", classify_listing(Result(TIMEOUT), self.cfg))
+        self.assertIn("daemon", classify_listing(Result(1, "", "daemon unreachable"), self.cfg))
+
+
+class PowerShellErrors(unittest.TestCase):
+    def test_clixml_noise_removed(self):
+        noise = '#< CLIXML\n<Objs><Obj S="progress"><AV>Préparation</AV></Obj></Objs>'
+        self.assertEqual(ps_error(Result(1, "", noise)), "code 1")
+        err = noise + '<S S="Error">Accès refusé_x000D__x000A_</S>'
+        self.assertEqual(ps_error(Result(1, "", err)), "Accès refusé")
+        self.assertEqual(ps_error(Result(1, "", "simple erreur")), "simple erreur")
+
+    def test_events_kept_despite_exit_code(self):
+        class R(FakeRunner):
+            def powershell(self, script, timeout=30, env=None):
+                return Result(1, '"Time","LogName"\n"x","System"\n', "#< CLIXML")
+        with tempfile.TemporaryDirectory() as tmp:
+            cap = IncidentCapture(R(), Path(tmp) / "inc", 2, environ={"LOCALAPPDATA": tmp})
+            s = cap.capture("x", HUNG, [])
+            if os.name == "nt":
+                self.assertTrue((Path(s["path"]) / "events.csv").is_file())
 
 
 class Rules(unittest.TestCase):
