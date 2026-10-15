@@ -6,6 +6,7 @@ Deux cadences : une sonde de santé légère (`docker.watchdog`) et un poll d'in
 import os
 import threading
 import time
+from dataclasses import replace
 from typing import Any, Dict, List, Optional
 
 from ...core.http import HttpError, Request, Router
@@ -43,6 +44,9 @@ class DockerModule(Module):
         self.incidents = IncidentCapture(ctx.runner, ctx.settings.data_dir / "incidents", self.cfg.max_incidents)
         self.recoverer = Recoverer(ctx.runner)
         self.state_store = ctx.store("docker_watchdog")
+        saved = self.state_store.load()
+        if isinstance(saved, dict) and isinstance(saved.get("auto_recover"), bool):
+            self.cfg = replace(self.cfg, auto_recover=saved["auto_recover"])
         self.guard = RecoveryGuard(self.cfg, history=self._saved_recoveries())
         self.local, self.local_reason = docker_is_local()
         self.work = threading.Lock()  # une seule capture ou relance à la fois
@@ -124,7 +128,7 @@ class DockerModule(Module):
         """Appelé avec `self.work` acquis ; le libère."""
         try:
             self.guard.record()
-            self.state_store.save({"recoveries": self.guard.history})
+            self._save_state()
             self.recovering_now = True
             self.wd.begin_recovery()
             self.recovery = {"state": "running", "started": time.time(), "detail": ""}
@@ -179,6 +183,22 @@ class DockerModule(Module):
         if r.ok and r.out.strip().isdigit():
             self.desktop_started = float(r.out.strip())
 
+    def _save_state(self) -> None:
+        self.state_store.save({"recoveries": self.guard.history, "auto_recover": self.cfg.auto_recover})
+
+    def _set_auto_recover(self, req: Request):
+        if not self.actions_enabled:
+            raise HttpError(403, "actions désactivées (lancer avec --docker-actions)")
+        enabled = req.json().get("enabled")
+        if not isinstance(enabled, bool):
+            raise HttpError(400, "« enabled » doit être un booléen")
+        self.cfg = replace(self.cfg, auto_recover=enabled)
+        self.recovery_note = ""
+        self._save_state()
+        self.ctx.emit("docker_auto_recover_changed", "Relance automatique " + ("activée" if enabled else "désactivée"),
+                      "info", enabled=enabled)
+        return {"ok": True, "enabled": enabled}
+
     def _saved_recoveries(self) -> List[float]:
         saved = self.state_store.load()
         items = saved.get("recoveries", []) if isinstance(saved, dict) else []
@@ -232,6 +252,7 @@ class DockerModule(Module):
         r.post("/action", self._action)
         r.get("/watchdog", self._watchdog)
         r.post("/watchdog/capture", self._manual_capture)
+        r.post("/watchdog/auto-recover", self._set_auto_recover)
 
     def _watchdog(self, req: Request):
         snap = self.wd.snapshot()

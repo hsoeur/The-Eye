@@ -70,10 +70,20 @@ function Engine() {
       setTimeout(() => qc.invalidateQueries({ queryKey: ["/api/docker/watchdog"] }), 3000);
     } catch (e) { toast.error((e as Error).message); }
   };
+  const toggleAuto = async () => {
+    try {
+      await api.post("/api/docker/watchdog/auto-recover", { enabled: !rec.enabled });
+      toast.success(`Relance automatique ${rec.enabled ? "désactivée" : "activée"}`);
+      qc.invalidateQueries({ queryKey: ["/api/docker/watchdog"] });
+    } catch (e) { toast.error((e as Error).message); }
+  };
   return (
     <div className="h-full space-y-5 overflow-auto p-6">
       <PageHeader title="Moteur Docker" subtitle={`Sonde toutes les ${data.config.probe_interval_s} s · seuil de lenteur ${data.config.slow_threshold_s} s`}
-        actions={<Badge tone={st}>{label}{data.state === "hung" && data.hung_since ? ` depuis ${ago(data.hung_since, data.now)}` : ""}</Badge>} />
+        actions={<div className="flex items-center gap-2">
+          {data.actions && <Button variant={rec.enabled ? "danger" : "primary"} onClick={toggleAuto}><RotateCw className="size-3.5" />{rec.enabled ? "Désactiver la relance auto" : "Activer la relance auto"}</Button>}
+          <Badge tone={st}>{label}{data.state === "hung" && data.hung_since ? ` depuis ${ago(data.hung_since, data.now)}` : ""}</Badge>
+        </div>} />
       {data.config.ignored && (data.config.ignored as string[]).length > 0 && (
         <Badge tone="warn"><TriangleAlert className="size-3" />Configuration ignorée : {(data.config.ignored as string[]).join(", ")}</Badge>
       )}
