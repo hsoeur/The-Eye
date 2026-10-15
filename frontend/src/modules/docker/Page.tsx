@@ -11,7 +11,7 @@ import { Modal, useConfirm } from "@/components/ui/dialog";
 import { SearchInput, Select } from "@/components/ui/input";
 import { PanelHeader, Row, Split, Table, Td, Th, Toolbar } from "@/components/ui/table";
 import { api } from "@/lib/api";
-import { level } from "@/lib/format";
+import { ago, dateTime, level } from "@/lib/format";
 import { usePoll } from "@/lib/usePoll";
 
 interface Ctn {
@@ -29,7 +29,95 @@ type Filter = keyof typeof FILTERS;
 export default function DockerPage() {
   const { "*": sel } = useParams();
   const nav = useNavigate();
-  const { data, isLoading } = usePoll<DockerData>("/api/docker", 2000);
+  const engine = sel === "engine";
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex gap-1 border-b px-6 pt-3">
+        {([["", "Containers"], ["engine", "Moteur"]] as const).map(([k, label]) => (
+          <button key={k} type="button" onClick={() => nav(k ? `/docker/${k}` : "/docker")}
+            className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${(k === "engine") === engine ? "border-accent font-medium" : "border-transparent text-muted hover:text-fg"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1">{engine ? <Engine /> : <Containers sel={sel} />}</div>
+    </div>
+  );
+}
+
+interface Probe { t: number; kind: string; latency_s: number; detail: string; state: string }
+interface Incident { name: string; path: string; time: number; reason: string; state: string; failed_steps: string[] }
+interface Watchdog {
+  state: string; since: number; last: Probe | null; history: [number, number, string, string][]; hung_since: number | null;
+  latency_s: number | null; config: Record<string, number | boolean | string[]>; incidents: Incident[]; desktop_started: number;
+  recoveries: { enabled: boolean; local: boolean; local_reason: string; note: string; last: number; last_24h: number; max_per_day: number;
+    cooldown_until: number; current: { state: string; started: number; detail: string }; in_maintenance: boolean };
+  busy: boolean; actions: boolean; now: number;
+}
+const ENGINE: Record<string, [string, Tone]> = { healthy: ["Sain", "ok"], degraded: ["Dégradé", "warn"], hung: ["Figé", "crit"], recovering: ["Rétablissement", "warn"] };
+
+function Engine() {
+  const { data, isLoading } = usePoll<Watchdog>("/api/docker/watchdog", 5000);
+  const qc = useQueryClient();
+  const chart = useMemo(() => (data?.history ?? []).map(([t, latency]) => ({ t, latency })), [data]);
+  if (isLoading || !data) return <div className="space-y-3 p-6"><Skeleton className="h-8 w-48" /><Skeleton className="h-64" /></div>;
+  const [label, st] = ENGINE[data.state] ?? [data.state, "off" as Tone];
+  const rec = data.recoveries;
+  const capture = async () => {
+    try {
+      await api.post("/api/docker/watchdog/capture", {});
+      toast.success("Capture des preuves lancée");
+      setTimeout(() => qc.invalidateQueries({ queryKey: ["/api/docker/watchdog"] }), 3000);
+    } catch (e) { toast.error((e as Error).message); }
+  };
+  return (
+    <div className="h-full space-y-5 overflow-auto p-6">
+      <PageHeader title="Moteur Docker" subtitle={`Sonde toutes les ${data.config.probe_interval_s} s · seuil de lenteur ${data.config.slow_threshold_s} s`}
+        actions={<Badge tone={st}>{label}{data.state === "hung" && data.hung_since ? ` depuis ${ago(data.hung_since, data.now)}` : ""}</Badge>} />
+      {data.config.ignored && (data.config.ignored as string[]).length > 0 && (
+        <Badge tone="warn"><TriangleAlert className="size-3" />Configuration ignorée : {(data.config.ignored as string[]).join(", ")}</Badge>
+      )}
+      <div>
+        <div className="mb-1 text-xs text-muted">Latence de la sonde (s){data.last?.detail && data.last.kind !== "ok" ? ` · dernier message : ${data.last.detail}` : ""}</div>
+        <TimeChart data={chart} format={(v) => `${v.toFixed(1)} s`} series={[{ key: "latency", label: "Latence", color: "var(--accent)" }]} />
+      </div>
+      <KV rows={[
+        ["Dernière sonde", data.last ? `${data.last.kind} · ${data.last.latency_s.toFixed(2)} s · ${ago(data.last.t, data.now)}` : "—"],
+        ["Dernier démarrage de Docker Desktop", data.desktop_started ? dateTime(data.desktop_started) : "—"],
+        ["Relance automatique", rec.enabled ? (rec.local ? "activée" : `indisponible (${rec.local_reason})`) : "désactivée"],
+        ["Relances sur 24 h", `${rec.last_24h} / ${rec.max_per_day}`],
+        ["Dernière relance", rec.last ? dateTime(rec.last) : "—"],
+        ...(rec.current?.state ? ([["Relance en cours / dernière", `${rec.current.state}${rec.current.detail ? ` — ${rec.current.detail}` : ""}`]] as [string, string][]) : []),
+        ...(rec.note ? ([["Relance suspendue", rec.note]] as [string, string][]) : []),
+      ]} />
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-sm font-medium">Incidents capturés</h3>
+          {data.actions && <Button onClick={capture} disabled={data.busy}><ScrollText className="size-3.5" />{data.busy ? "Capture en cours…" : "Capturer maintenant"}</Button>}
+        </div>
+        {data.incidents.length ? (
+          <Table>
+            <thead><tr><Th>Date</Th><Th>État</Th><Th>Raison</Th><Th>Dossier</Th></tr></thead>
+            <tbody>
+              {data.incidents.map((i) => (
+                <tr key={i.path} className="border-b">
+                  <Td className="whitespace-nowrap">{dateTime(i.time)}</Td>
+                  <Td>{i.state}</Td>
+                  <Td className="max-w-64 truncate text-muted">{i.reason}{i.failed_steps.length ? ` (étapes en échec : ${i.failed_steps.join(", ")})` : ""}</Td>
+                  <Td className="font-mono text-xs break-all">{i.path}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        ) : <Empty icon={<ContainerIcon />} title="Aucun incident" hint="Les preuves sont capturées automatiquement quand le moteur est déclaré figé." />}
+      </div>
+    </div>
+  );
+}
+
+function Containers({ sel }: { sel?: string }) {
+  const nav = useNavigate();
+  const { data, isLoading } = usePoll<DockerData>("/api/docker", 5000);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());

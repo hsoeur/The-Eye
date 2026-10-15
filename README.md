@@ -18,8 +18,22 @@ Santé : `GET /api/health` · modules : `GET /api/modules` · API des modules so
 Le CIDR est détecté automatiquement (sous-réseaux locaux ≤ /22) ou saisi dans l'UI.
 
 ## Supervision Docker
-Onglet **🐳 Docker** : tous les containers (actifs/arrêtés), santé, CPU, RAM, réseau, disque, ports, courbes temps réel (rafraîchi toutes les 2 s) et logs en direct. Utilise le CLI `docker` (Docker Desktop ou `DOCKER_HOST` pour un serveur distant).
+Onglet **🐳 Docker** : tous les containers (actifs/arrêtés), santé, CPU, RAM, réseau, disque, ports, courbes (inventaire rafraîchi toutes les 15 s, configurable) et logs en direct. Utilise le CLI `docker` (Docker Desktop ou `DOCKER_HOST` pour un serveur distant).
 Pour autoriser Start/Stop/Restart depuis l'UI : `python eye.py --docker-actions` (désactivé par défaut, car l'interface n'est pas authentifiée).
+
+### Watchdog du moteur Docker (sous-onglet « Moteur »)
+Une sonde légère (`docker version --format "{{.Server.Version}}"`, toutes les 30 s, délai 15 s) détecte un moteur lent ou figé, indépendamment du poll lourd (`docker ps -a` + `docker stats`), suspendu tant que le moteur est figé.
+- **États** : `healthy` → `degraded` (2 sondes lentes ou en échec de suite, seuil de lenteur 5 s) → `hung` (3 échecs consécutifs : délai dépassé, code ≠ 0, CLI absent, réponse invalide) → `recovering` (1ʳᵉ réponse correcte) → `healthy` (3 réponses correctes). Un événement par transition : `docker_engine_degraded`, `docker_engine_hung`, `docker_engine_recovered`.
+- **Preuves** : à l'entrée en `hung` (une fois par incident, avant toute relance), un dossier `data/incidents/docker-AAAAMMJJ-HHMMSS/` reçoit les logs Docker Desktop/WSL (queues), les événements Windows, l'état système, `docker info/ps/system df`, l'historique des sondes et `summary.json`. Chaque étape est isolée (une erreur n'empêche pas les autres) ; seuls les `max_incidents` derniers dossiers sont conservés. Événement `docker_incident_captured`. Capture manuelle : bouton de l'onglet (avec `--docker-actions`) ou `POST /api/docker/watchdog/capture`.
+- **Alertes** : métriques `docker_engine_latency_s`, `docker_engine_state` (0 sain, 1 dégradé, 2 figé, 3 rétablissement) et `docker_engine_hung` sur la cible `docker-host` ; règles par défaut « Moteur Docker lent » (> 5 s pendant 1 min, warning) et « Moteur Docker figé » (critique), ajoutées une seule fois aux installations existantes. `GET /api/docker/watchdog` expose l'état, l'historique, les incidents et la configuration effective.
+- **Relance automatique** (`auto_recover`, **désactivée par défaut**) : après `recover_after_s` en `hung` et une fois la capture terminée, arrêt de Docker Desktop, `wsl --shutdown`, relance. Garde-fous : délai minimal entre relances, plafond par 24 h, une seule relance à la fois, suspendue en fenêtre de maintenance, **Windows et Docker local uniquement** (pas de relance si `DOCKER_HOST` pointe vers un hôte distant ; un `DOCKER_CONTEXT` distant n'est pas détecté). Après la relance, les containers `Exited (255)` sans politique restart sont listés (événement `info`) mais jamais redémarrés. Risques : tous les containers sont coupés ; un lancement depuis un service Windows (session 0) peut ne pas afficher/démarrer Docker Desktop correctement.
+
+```json
+{ "modules": { "docker": { "interval_s": 15, "probe_interval_s": 30, "probe_timeout_s": 15, "slow_threshold_s": 5,
+  "degraded_after": 2, "hung_after": 3, "healthy_after": 3, "capture_on_hung": true, "max_incidents": 10,
+  "auto_recover": false, "recover_after_s": 120, "recover_cooldown_min": 30, "max_recoveries_per_day": 3 } } }
+```
+Les valeurs hors bornes sont ignorées (défaut conservé) avec un avertissement dans les logs. L'ancien `interval_s: 2` est désormais invalide (minimum 5 s).
 
 ## Supervision de machines (onglet 🖥️ Machines)
 

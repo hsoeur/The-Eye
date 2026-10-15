@@ -130,7 +130,19 @@ class Rule:
         return True
 
 
-def default_rules() -> List[Rule]:
+def docker_watchdog_rules() -> List[Rule]:
+    return [
+        Rule(id="docker-engine-slow", name="Moteur Docker lent", metric="docker_engine_latency_s", operator=">",
+             threshold=5, severity="warning", for_seconds=60, recover_seconds=60, source="docker",
+             description="La sonde de santé du moteur Docker répond lentement."),
+        Rule(id="docker-engine-hung", name="Moteur Docker figé", metric="docker_engine_hung", operator=">=",
+             threshold=1, severity="critical", for_seconds=0, recover_seconds=60, source="docker",
+             description="Le moteur Docker ne répond plus (preuves capturées dans data/incidents)."),
+    ]
+
+
+def default_rules(docker_active: bool = False) -> List[Rule]:
+    """Règles par défaut ; `docker-down` n'est actif d'emblée que si le module docker l'est."""
     return [
         Rule(id="host-down", name="Machine injoignable", metric="reachable", operator="<", threshold=1,
              severity="critical", for_seconds=120, recover_seconds=60,
@@ -147,12 +159,13 @@ def default_rules() -> List[Rule]:
         Rule(id="container-fault", name="Container en défaut", metric="container_fault", operator=">=", threshold=1,
              severity="critical", for_seconds=30, recover_seconds=30),
         Rule(id="docker-down", name="Docker indisponible", metric="docker_available", operator="<", threshold=1,
-             severity="critical", for_seconds=60, recover_seconds=60, enabled=False,
-             description="À activer si Docker est supervisé sur cette installation."),
+             severity="critical", for_seconds=60,              recover_seconds=60, enabled=docker_active,
+                          description="Actif par défaut si le module docker est actif sur cette installation."),
         Rule(id="device-offline", name="Équipement réseau hors ligne", metric="device_online", operator="<",
              threshold=1, severity="warning", for_seconds=180, recover_seconds=60,
              description="Équipements nommés dans la cartographie."),
-    ]
+                     *docker_watchdog_rules(),
+                 ]
 
 
 @dataclass

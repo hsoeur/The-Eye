@@ -80,6 +80,13 @@ Le module `alerts` les collecte via `ctx.collect_observations()` et les confront
 modification n'est nécessaire pour rendre une nouvelle métrique « alertable ». Le module `alerts` (moteur pur dans
 `engine.py`, historique SQL dans `store.py`, écriture différée dans `journal.py`) est décrit dans [ALERTES-MYSQL.md](ALERTES-MYSQL.md).
 
+## Watchdog du moteur Docker
+
+Le module `docker` sépare deux cadences : `docker.watchdog` (sonde légère) et `docker.poll` (inventaire/stats).
+- `watchdog.py` : logique pure (états healthy/degraded/hung/recovering, `WatchdogConfig` validée par bornes, `RecoveryGuard`), testée avec horloge injectée.
+- `incident.py` : capture des preuves dans `data/incidents/` (étapes isolées, rétention) ; `recovery.py` : relance de Docker Desktop. Toutes les commandes passent par `Runner`.
+- `DockerModule` orchestre : événements (`ctx.emit`), observations `docker_engine_*` sur `docker-host`, règles par défaut du module `alerts` (migration unique pour les bases existantes), `Context.peer("alerts").in_maintenance()` pour respecter les fenêtres de maintenance. Détails, seuils et risques de `auto_recover` : section « Watchdog du moteur Docker » du [README](../README.md).
+
 ## Ajouter un type de machine supervisée
 
 Ajouter un fichier dans `theeye/modules/machines/collectors/` avec une classe `Collector` décorée `@register`

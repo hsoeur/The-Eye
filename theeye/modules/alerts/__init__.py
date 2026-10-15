@@ -13,10 +13,11 @@ from ...core.http import HttpError, Request, Response, Router
 from ...core.module import Health, Module
 from .engine import Alert, Changes, Engine
 from .journal import Journal
-from .rules import SEVERITIES, Maintenance, Rule, default_rules
+from .rules import SEVERITIES, Maintenance, Rule, default_rules, docker_watchdog_rules
 from .store import SqlStore, StoreError, StoreUnavailable, unprotect
 
 SNAPSHOT_EVERY = 60
+DOCKER_WATCHDOG_MIGRATION = ("docker_watchdog_rules",)
 CSV_COLUMNS = ["id", "state", "severity", "rule_name", "target_name", "item", "message", "started_at", "resolved_at",
                "resolve_reason", "peak_value", "threshold", "acked", "ack_by", "ack_comment", "ack_at", "flaps",
                "reopened", "notes"]
@@ -39,7 +40,7 @@ class AlertsModule(Module):
         self.interval = max(5.0, float(cfg.get("interval_s", 15)))
         self.retention_days = max(1, int(cfg.get("retention_days", 365)))
         self.engine = Engine(stale_seconds=max(120.0, self.interval * 20))
-        self.engine.set_rules(default_rules())
+        self.engine.set_rules(default_rules("docker" not in ctx.settings.disabled_modules))
         self.lock = threading.RLock()
         self.snapshot = ctx.store("alerts_state")
         self.loaded = False
@@ -78,8 +79,17 @@ class AlertsModule(Module):
                 self.engine.set_rules(Rule.from_dict(r) for r in snap["rules"])
             self.engine.set_maintenance(Maintenance.from_dict(m, m.get("id")) for m in snap.get("maintenance", []))
             self.engine.adopt(Alert.from_dict(a) for a in snap.get("active", []))
+            if "docker_watchdog_rules" not in snap.get("migrated", []):
+                self._add_docker_watchdog_rules()
         except (ValueError, TypeError, KeyError):
             self.ctx.log.exception("instantané des alertes illisible, ignoré")
+
+    def _add_docker_watchdog_rules(self) -> List[Rule]:
+        """Ajoute une seule fois les règles du watchdog Docker aux configurations antérieures (sans réimposer une règle supprimée)."""
+        added = [r for r in docker_watchdog_rules() if r.id not in self.engine.rules]
+        for r in added:
+            self.engine.rules[r.id] = r
+        return added
 
     def start(self) -> None:
         sch = self.ctx.scheduler
@@ -121,6 +131,9 @@ class AlertsModule(Module):
                                   + [{"op": "maint", "d": m.to_dict()} for m in self.engine.maintenance.values()]
                                   + [{"op": "meta", "d": {"k": "rules_seeded", "v": "1"}}])
             self.engine.adopt(Alert.from_dict(a) for a in active)
+            if cfg["meta"].get("docker_watchdog_rules") != "1":
+                self.journal.push([{"op": "rule", "d": r.to_dict()} for r in self._add_docker_watchdog_rules()]
+                                  + [{"op": "meta", "d": {"k": "docker_watchdog_rules", "v": "1"}}])
             self.loaded = self.dirty = True
         self.ctx.log.info("base d'alertes chargée (%d alerte(s) active(s))", len(active))
 
@@ -184,12 +197,18 @@ class AlertsModule(Module):
         with self.lock:
             data = {"rules": [r.to_dict() for r in self.engine.rules.values()],
                     "maintenance": [m.to_dict() for m in self.engine.maintenance.values()],
-                    "active": [a.to_dict() for a in self.engine.active.values()]}
+                    "active": [a.to_dict() for a in self.engine.active.values()],
+                    "migrated": [*DOCKER_WATCHDOG_MIGRATION]}
             self.dirty = False
         self.snapshot.save(data)
         self.last_snapshot = time.time()
 
     # --- API -----------------------------------------------------------------------------------------------------
+    def in_maintenance(self, target: str, now: Optional[float] = None) -> bool:
+        """Vrai si une fenêtre de maintenance active couvre la cible (lecture seule, pour les autres modules)."""
+        now = time.time() if now is None else now
+        with self.lock:
+            return any(m.covers(target) and m.active_at(now) for m in self.engine.maintenance.values())
     def register_routes(self, r: Router) -> None:
         r.get("", self._list)
         r.get("/status", lambda req: self._status())

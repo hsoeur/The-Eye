@@ -61,6 +61,11 @@ class Context:
     def emit(self, kind: str, message: str, severity: str = "info", **data: Any) -> None:
         self.bus.publish(self.module_id, kind, message, severity, **data)
 
+    def peer(self, module_id: str) -> Optional["Module"]:
+        """Autre module actif (ou None) ; à utiliser en lecture seule et sans en dépendre pour fonctionner."""
+        manager = self._shared.manager
+        return manager.modules.get(module_id) if manager else None
+
     def collect_observations(self) -> List[Dict[str, Any]]:
         """Mesures de tous les modules (voir Module.observations), pour le moteur d'alertes."""
         manager = self._shared.manager

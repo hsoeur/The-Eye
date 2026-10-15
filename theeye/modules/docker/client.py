@@ -66,6 +66,23 @@ class DockerClient:
             c["fault"] = is_fault(c)
         return cs
 
+    def crashed_without_restart(self) -> List[str]:
+        """Noms des containers récemment sortis en `Exited (255)` sans politique restart (jamais redémarrés d'office)."""
+        r = self._check(self.runner.run(["docker", "ps", "-a", "--filter", "status=exited", "--format",
+                                         "{{.ID}}\t{{.Names}}\t{{.Status}}"], 20))
+        found = {}
+        for line in r.out.splitlines():
+            cid, _, rest = line.partition("\t")
+            name, _, status = rest.partition("\t")
+            if "Exited (255)" in status and re.search(r"second|minute|hour", status):
+                found[cid] = name
+        if not found:
+            return []
+        pol = self.runner.run(["docker", "inspect", "--format", "{{.Id}} {{.HostConfig.RestartPolicy.Name}}", *found], 20)
+        policy = {line.split()[0][:12]: line.split()[1] if len(line.split()) > 1 else ""
+                  for line in pol.out.splitlines() if line.strip()}
+        return sorted(n for i, n in found.items() if policy.get(i[:12], "") in ("", "no"))
+
     def logs(self, cid: str, tail: int = 200) -> str:
         r = self.runner.run(["docker", "logs", "--tail", str(tail), "--timestamps", cid], 30)
         return (r.out + r.err)[-30000:]
