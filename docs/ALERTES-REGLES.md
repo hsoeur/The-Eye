@@ -27,9 +27,10 @@ Le système couvre :
 - la persistance locale ou MySQL ;
 - la reprise après indisponibilité de la base.
 
+Le détail technique de l'envoi d'e-mails est décrit dans [NOTIFICATIONS-ALERTES-SMTP.md](NOTIFICATIONS-ALERTES-SMTP.md).
+
 Le système ne couvre pas encore :
 
-- l'envoi d'e-mails ;
 - les notifications Teams ou Slack ;
 - l'escalade automatique vers une astreinte ;
 - la création de tickets ITSM.
