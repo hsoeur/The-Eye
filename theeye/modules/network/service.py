@@ -12,6 +12,7 @@ from .discovery import Probes
 from .fingerprint import PORTS, guess_type, vendor_of
 
 MAX_HOSTS = 4096
+LEGACY_TYPE_ALIASES = {"database": "server"}
 
 
 class NetworkService:
@@ -21,6 +22,11 @@ class NetworkService:
         self.lock = threading.RLock()
         self.state: Dict[str, Any] = {"devices": {}, "scans": [], "gateway": None, "subnets": []}
         self.state.update(self.store.load())
+        for device in self.state.get("devices", {}).values():
+            if device.get("type") in LEGACY_TYPE_ALIASES:
+                device["type"] = LEGACY_TYPE_ALIASES[device["type"]]
+            if device.get("forced_type") in LEGACY_TYPE_ALIASES:
+                device["forced_type"] = LEGACY_TYPE_ALIASES[device["forced_type"]]
         self.progress = {"running": False, "phase": "idle", "done": 0, "total": 0, "started": 0, "subnet": ""}
         self.last_error = ""
         self._scan_lock = threading.Lock()
@@ -125,7 +131,7 @@ class NetworkService:
                     d["hostname"] = old.get("hostname", "")
                 if not d["ports"] and old and not do_ports:
                     d["ports"] = old.get("ports", [])
-                forced = (old or {}).get("forced_type")
+                forced = LEGACY_TYPE_ALIASES.get((old or {}).get("forced_type"), (old or {}).get("forced_type"))
                 d["type"] = forced or guess_type(d)
                 if forced:
                     d["forced_type"] = forced

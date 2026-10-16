@@ -1,4 +1,4 @@
-"""Module Docker : containers, ressources, logs, actions optionnelles et watchdog du moteur.
+"""Module Docker : containers, ressources, logs, actions et watchdog du moteur.
 
 Deux cadences : une sonde de santé légère (`docker.watchdog`) et un poll d'inventaire/stats plus lourd
 (`docker.poll`), suspendu tant que le moteur est déclaré figé.
@@ -34,7 +34,7 @@ class DockerModule(Module):
     def __init__(self, ctx):
         super().__init__(ctx)
         self.client = DockerClient(ctx.runner)
-        self.actions_enabled = bool(ctx.config.get("actions", False))
+        self.actions_enabled = bool(ctx.config.get("actions", True))
         self.lock = threading.Lock()
         self.data: Dict[str, Any] = {"available": False, "error": "", "containers": [], "history": {}, "t": 0}
         self.cfg = WatchdogConfig.from_dict(ctx.config)
@@ -195,7 +195,7 @@ class DockerModule(Module):
 
     def _set_auto_recover(self, req: Request):
         if not self.actions_enabled:
-            raise HttpError(403, "actions désactivées (lancer avec --docker-actions)")
+            raise HttpError(403, "actions Docker désactivées dans la configuration")
         enabled = req.json().get("enabled")
         if not isinstance(enabled, bool):
             raise HttpError(400, "« enabled » doit être un booléen")
@@ -272,7 +272,7 @@ class DockerModule(Module):
 
     def _manual_capture(self, req: Request):
         if not self.actions_enabled:
-            raise HttpError(403, "actions désactivées (lancer avec --docker-actions)")
+            raise HttpError(403, "actions Docker désactivées dans la configuration")
         if self.work.locked():
             raise HttpError(409, "une capture ou une relance est déjà en cours")
         self.ctx.scheduler.submit(self._capture, "capture manuelle", False)
@@ -290,7 +290,7 @@ class DockerModule(Module):
 
     def _action(self, req: Request):
         if not self.actions_enabled:
-            raise HttpError(403, "actions désactivées (lancer avec --docker-actions)")
+            raise HttpError(403, "actions Docker désactivées dans la configuration")
         b = req.json()
         cid, act = str(b.get("id", "")), b.get("action")
         if not ID_RE.fullmatch(cid) or act not in ACTIONS:

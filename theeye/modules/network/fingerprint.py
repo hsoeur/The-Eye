@@ -11,7 +11,7 @@ PORTS = {21: "FTP", 22: "SSH", 23: "Telnet", 53: "DNS", 80: "HTTP", 135: "RPC", 
          44818: "EtherNet/IP", 102: "S7 (Siemens)", 47808: "BACnet"}
 
 DEVICE_TYPES = ("router", "switch", "server", "windows", "linux", "printer", "plc", "vm",
-                "database", "web", "iot", "unknown")
+                "web", "iot", "unknown")
 
 OUI_FALLBACK = {"00:0C:29": "VMware", "00:50:56": "VMware", "00:05:69": "VMware", "08:00:27": "VirtualBox",
                 "00:15:5D": "Hyper-V", "B8:27:EB": "Raspberry Pi", "DC:A6:32": "Raspberry Pi",
@@ -56,8 +56,6 @@ def guess_type(d: dict) -> str:
         return "iot"
     if any(k in v for k in ("cisco", "ubiquiti", "netgear")) and not (p & {3389, 445}):
         return "switch"
-    if p & {1433, 3306, 5432}:
-        return "database"
     if (p & {3389, 445, 5985, 135}) and re.search(r"srv|server|dc\d|sql|app|web", n):
         return "server"
     if p & {3389, 445, 135, 139}:

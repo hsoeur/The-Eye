@@ -19,7 +19,7 @@ Le CIDR est détecté automatiquement (sous-réseaux locaux ≤ /22) ou saisi da
 
 ## Supervision Docker
 Onglet **🐳 Docker** : tous les containers (actifs/arrêtés), santé, CPU, RAM, réseau, disque, ports, courbes (inventaire rafraîchi toutes les 15 s, configurable) et logs en direct. Utilise le CLI `docker` (Docker Desktop ou `DOCKER_HOST` pour un serveur distant).
-Pour autoriser Start/Stop/Restart depuis l'UI : `python eye.py --docker-actions` (désactivé par défaut, car l'interface n'est pas authentifiée).
+Les actions Start/Stop/Restart depuis l'UI sont autorisées par défaut. L'option historique `--docker-actions` reste acceptée mais n'est plus nécessaire. Pour les désactiver explicitement, définir `"actions": false` dans `modules.docker` (l'interface n'est pas authentifiée).
 
 ### Watchdog du moteur Docker (sous-onglet « Moteur »)
 Une sonde légère (`docker version --format "{{.Server.Version}}"`, puis `docker ps -q` si la première répond, toutes les 30 s, délai 15 s chacune) détecte un moteur lent ou figé, y compris un daemon qui répond à `version` mais pas aux opérations sur les containers. Elle est indépendante du poll lourd (`docker ps -a` + `docker stats`), suspendu tant que le moteur est figé.
@@ -29,7 +29,7 @@ Une sonde légère (`docker version --format "{{.Server.Version}}"`, puis `docke
 - **Relance automatique** (`auto_recover`, **désactivée par défaut**, activable/désactivable depuis le bouton de l'onglet Moteur avec `--docker-actions`, ou via `POST /api/docker/watchdog/auto-recover {"enabled": true}` ; le choix est mémorisé dans `data/docker_watchdog.json` et prime sur `config.json`) : après `recover_after_s` en `hung` et une fois la capture terminée, arrêt de Docker Desktop, `wsl --shutdown`, relance. Garde-fous : délai minimal entre relances, plafond par 24 h, une seule relance à la fois, suspendue en fenêtre de maintenance, **Windows et Docker local uniquement** (pas de relance si `DOCKER_HOST` pointe vers un hôte distant ; un `DOCKER_CONTEXT` distant n'est pas détecté). Après la relance, les containers `Exited (255)` sans politique restart sont listés (événement `info`) mais jamais redémarrés. Risques : tous les containers sont coupés ; un lancement depuis un service Windows (session 0) peut ne pas afficher/démarrer Docker Desktop correctement.
 
 ```json
-{ "modules": { "docker": { "interval_s": 15, "probe_interval_s": 30, "probe_timeout_s": 15, "slow_threshold_s": 5,
+{ "modules": { "docker": { "actions": true, "interval_s": 15, "probe_interval_s": 30, "probe_timeout_s": 15, "slow_threshold_s": 5,
   "degraded_after": 2, "hung_after": 3, "healthy_after": 3, "capture_on_hung": true, "max_incidents": 10,
   "auto_recover": false, "recover_after_s": 120, "recover_cooldown_min": 30, "max_recoveries_per_day": 3 } } }
 ```

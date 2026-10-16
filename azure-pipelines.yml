@@ -17,7 +17,7 @@ variables:
   SERVER_PATH: 'C:\Deploy\TheEye'      # dossier de dépôt temporaire sur le serveur
   INSTALL_PATH: 'C:\TheEye'            # dossier d'installation (data\ conservé entre les déploiements)
   APP_PORT: '8765'                     # port d'écoute de The Eye
-  DOCKER_ACTIONS: 'false'              # true = boutons start/stop/restart des containers dans l'UI
+  DOCKER_ACTIONS: 'false'              # conservé pour compatibilité ; les actions Docker sont activées par défaut
 
 steps:
   - checkout: self

@@ -1,4 +1,4 @@
-import { Boxes, Cpu, Database, Globe, HelpCircle, Monitor, Network, Printer, Radio, Router, Server, Terminal, type LucideIcon } from "lucide-react";
+import { Boxes, Cpu, Globe, HelpCircle, Monitor, Network, Printer, Radio, Router, Server, Terminal, type LucideIcon } from "lucide-react";
 
 export interface Device {
   ip: string; mac?: string; vendor?: string; hostname?: string; label?: string; type: string; ttl?: number;
@@ -18,7 +18,6 @@ export const TYPES: Record<string, { label: string; icon: LucideIcon }> = {
   printer: { label: "Imprimante", icon: Printer },
   plc: { label: "Automate", icon: Cpu },
   vm: { label: "Machine virtuelle", icon: Boxes },
-  database: { label: "Base de données", icon: Database },
   web: { label: "Web", icon: Globe },
   iot: { label: "IoT", icon: Radio },
   unknown: { label: "Inconnu", icon: HelpCircle },

@@ -1,5 +1,5 @@
 import { List, Map as MapIcon, Radar, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -87,22 +87,43 @@ export default function NetworkPage() {
 }
 
 function DeviceTable({ rows, sel, now, onSelect }: { rows: Device[]; sel?: string; now: number; onSelect: (ip: string) => void }) {
+  const groups = useMemo(() => {
+    const order = Object.keys(TYPES);
+    const grouped = new Map<string, Device[]>();
+    for (const device of rows) grouped.set(device.type, [...(grouped.get(device.type) ?? []), device]);
+    return [...grouped.entries()]
+      .sort(([a], [b]) => order.indexOf(a) - order.indexOf(b))
+      .map(([type, devices]) => ({
+        type,
+        devices: devices.sort((a, b) => ipNum(a.ip) - ipNum(b.ip)),
+      }));
+  }, [rows]);
+
   return (
     <Table>
       <thead><tr><Th className="w-8" /><Th>Nom</Th><Th>Adresse IP</Th><Th>Type</Th><Th>Fabricant</Th><Th>Ports</Th><Th>Dernière vue</Th></tr></thead>
       <tbody>
-        {rows.map((d) => {
-          const Icon = typeInfo(d.type).icon;
+        {groups.map(({ type, devices }) => {
+          const Icon = typeInfo(type).icon;
           return (
-            <Row key={d.ip} selected={d.ip === sel} onClick={() => onSelect(d.ip)}>
-              <Td><StatusDot tone={d.online ? "ok" : "off"} /></Td>
-              <Td className="font-medium">{nameOf(d)}{d.new && <Badge tone="warn" className="ml-2">nouveau</Badge>}</Td>
-              <Td className="font-mono text-xs text-muted">{d.ip}</Td>
-              <Td><span className="flex items-center gap-1.5 text-muted"><Icon className="size-3.5" />{typeInfo(d.type).label}</span></Td>
-              <Td className="max-w-48 truncate text-muted">{d.vendor || "—"}</Td>
-              <Td className="max-w-40 truncate font-mono text-xs text-muted">{(d.ports ?? []).join(", ") || "—"}</Td>
-              <Td className="text-muted">{ago(d.last_seen, now)}</Td>
-            </Row>
+            <Fragment key={type}>
+              <tr className="border-b bg-raised/40">
+                <td colSpan={7} className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                  <span className="flex items-center gap-2"><Icon className="size-3.5" />{typeInfo(type).label}<span className="font-mono font-normal text-faint">{devices.length}</span></span>
+                </td>
+              </tr>
+              {devices.map((d) => (
+                <Row key={d.ip} selected={d.ip === sel} onClick={() => onSelect(d.ip)}>
+                  <Td><StatusDot tone={d.online ? "ok" : "off"} /></Td>
+                  <Td className="font-medium">{nameOf(d)}{d.new && <Badge tone="warn" className="ml-2">nouveau</Badge>}</Td>
+                  <Td className="font-mono text-xs text-muted">{d.ip}</Td>
+                  <Td><span className="flex items-center gap-1.5 text-muted"><Icon className="size-3.5" />{typeInfo(d.type).label}</span></Td>
+                  <Td className="max-w-48 truncate text-muted">{d.vendor || "—"}</Td>
+                  <Td className="max-w-40 truncate font-mono text-xs text-muted">{(d.ports ?? []).join(", ") || "—"}</Td>
+                  <Td className="text-muted">{ago(d.last_seen, now)}</Td>
+                </Row>
+              ))}
+            </Fragment>
           );
         })}
       </tbody>

@@ -15,7 +15,7 @@ from theeye.core.scheduler import Scheduler
 from theeye.core.storage import JsonStore
 from theeye.modules.machines.collectors import base as collectors
 from theeye.modules.machines.collectors.linux import parse as parse_linux
-from theeye.modules.network.fingerprint import guess_type, vendor_of
+from theeye.modules.network.fingerprint import DEVICE_TYPES, guess_type, vendor_of
 
 
 class RouterTest(unittest.TestCase):
@@ -74,6 +74,12 @@ class FingerprintTest(unittest.TestCase):
     def test_vendor_and_type(self):
         self.assertEqual(vendor_of("zz", {}), "")
         self.assertIsInstance(guess_type({"ports": [22], "vendor": ""}), str)
+
+    def test_virtual_machine_type_and_removed_database_type(self):
+        self.assertIn("vm", DEVICE_TYPES)
+        self.assertNotIn("database", DEVICE_TYPES)
+        self.assertEqual(guess_type({"ports": [], "vendor": "VMware"}), "vm")
+        self.assertNotEqual(guess_type({"ports": [3306], "vendor": ""}), "database")
 
 
 class CollectorTest(unittest.TestCase):
