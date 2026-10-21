@@ -51,10 +51,16 @@ if (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyCon
 
 Write-Host "Copie des fichiers vers $InstallDir (data\ est conservé)"
 New-Item -ItemType Directory -Force $InstallDir | Out-Null
-robocopy $Source $InstallDir /MIR /XD data __pycache__ /XF *.pyc /NFL /NDL /NJH /NJS /NP | Out-Null
+robocopy $Source $InstallDir /MIR /XD data lib __pycache__ /XF *.pyc /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy a échoué ($LASTEXITCODE)" }
 $global:LASTEXITCODE = 0 # robocopy renvoie 1 quand des fichiers sont copiés
 New-Item -ItemType Directory -Force "$InstallDir\data" | Out-Null
+
+Write-Host "Dépendances Python (hors-ligne, depuis vendor\)"
+Remove-Item "$InstallDir\lib" -Recurse -Force -ErrorAction SilentlyContinue
+& $py -m pip install --no-index --find-links "$InstallDir\vendor" --target "$InstallDir\lib" --only-binary=:all: -r "$InstallDir\requirements.txt" --no-warn-script-location
+if ($LASTEXITCODE) { throw "Installation des dépendances échouée (roues de vendor\ incompatibles avec ce Python ? cp312 win_amd64 attendu)" }
+$global:LASTEXITCODE = 0
 
 Write-Host "Pare-feu : TCP $Port"
 if (-not (Get-NetFirewallRule -DisplayName 'The Eye' -ErrorAction SilentlyContinue)) {
