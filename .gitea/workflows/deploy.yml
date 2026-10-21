@@ -1,0 +1,94 @@
+# The Eye - build + déploiement sur le serveur de prod (Windows Server 2022, Docker Desktop)
+# Runner auto-hébergé (label "vmdevops", mode host) -> pscp/plink vers le serveur.
+# Secret à définir : Paramètres du dépôt > Actions > Secrets > SSH_PASSWORD
+# (mot de passe de SERVER_USER, aussi utilisé pour la tâche planifiée sous RUN_AS_USER : même mot de passe requis)
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  SERVER_USER: 'AdminDMZ'
+  RUN_AS_USER: 'adminprod'             # compte sous lequel tourne The Eye (propriétaire de la clé SSH Linux)
+  SERVER_IP: '192.168.1.104'
+  SERVER_PATH: 'C:\Deploy\TheEye'      # dossier de dépôt temporaire sur le serveur
+  INSTALL_PATH: 'C:\TheEye'            # dossier d'installation (data\ conservé entre les déploiements)
+  APP_PORT: '8765'                     # port d'écoute de The Eye
+  DOCKER_ACTIONS: 'false'              # conservé pour compatibilité ; les actions Docker sont activées par défaut
+
+jobs:
+  deploy:
+    runs-on: vmdevops
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérification et build
+        run: |
+          # Contrôle facultatif : ignoré si Python / Node ne sont pas installés sur l'agent
+          if (Get-Command python -ErrorAction SilentlyContinue) {
+            python -m compileall -q eye.py theeye
+            if ($LASTEXITCODE) { exit 1 }
+            python -m unittest discover -s tests
+            if ($LASTEXITCODE) { exit 1 }
+          } else { Write-Host "Python absent de l'agent : contrôle Python ignoré" }
+          if (Get-Command node -ErrorAction SilentlyContinue) {
+            # theeye/web est versionné ; on le reconstruit si Node est présent (sinon le build commité est utilisé)
+            Push-Location frontend
+            npm ci --no-audit --no-fund
+            if ($LASTEXITCODE) { exit 1 }
+            npm run build
+            if ($LASTEXITCODE) { exit 1 }
+            Pop-Location
+          } else { Write-Host "Node absent de l'agent : build commité de theeye/web utilisé" }
+
+      - name: Préparer le package
+        run: |
+          $dst = "$env:RUNNER_TEMP\TheEye"
+          if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }
+          New-Item -ItemType Directory -Force $dst | Out-Null
+          Copy-Item eye.py, README.md $dst
+          Copy-Item theeye, docs, deploy $dst -Recurse
+          Get-ChildItem $dst -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
+
+      - name: Envoi sur le serveur
+        env:
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+        run: |
+          $parent = (Split-Path $env:SERVER_PATH -Parent).Replace('\','/') + '/'
+          $target = "$($env:SERVER_USER)@$($env:SERVER_IP)"
+
+          if ([string]::IsNullOrEmpty($env:SSH_PASSWORD)) { throw "Secret SSH_PASSWORD non défini sur ce dépôt" }
+
+          # Enregistre l'empreinte SSH du serveur (première connexion)
+          $ErrorActionPreference = 'Continue'
+          'y' | plink -ssh $target -pw $env:SSH_PASSWORD exit 2>&1 | ForEach-Object { Write-Host "$_" }
+          $ErrorActionPreference = 'Stop'
+          plink -batch -ssh $target -pw $env:SSH_PASSWORD "echo connexion OK"
+          if ($LASTEXITCODE) { throw "Connexion SSH refusée pour $target : vérifier SERVER_USER et SSH_PASSWORD" }
+
+          Write-Host "Nettoyage du dossier de dépôt"
+          $clean = "Remove-Item -Recurse -Force '$($env:SERVER_PATH)' -ErrorAction SilentlyContinue; `$null = New-Item -ItemType Directory -Force '$($env:SERVER_PATH)'"
+          $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($clean))
+          plink -batch -ssh $target -pw $env:SSH_PASSWORD "powershell -NoProfile -NonInteractive -EncodedCommand $enc"
+          if ($LASTEXITCODE) { throw "plink (nettoyage) a échoué" }
+
+          Write-Host "Envoi des fichiers"
+          pscp -batch -r -pw $env:SSH_PASSWORD "$env:RUNNER_TEMP\TheEye" "${target}:$parent"
+          if ($LASTEXITCODE) { throw "pscp a échoué" }
+
+      - name: Installer et démarrer The Eye
+        env:
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+        run: |
+          $target = "$($env:SERVER_USER)@$($env:SERVER_IP)"
+          $dockerSwitch = if ($env:DOCKER_ACTIONS -eq 'true') { '-DockerActions' } else { '' }
+          # La tâche tourne sous le compte de prod RUN_AS_USER (accès à Docker Desktop et à la clé SSH Linux)
+          $pw = $env:SSH_PASSWORD.Replace("'", "''")
+          $script = "& '$($env:SERVER_PATH)\deploy\deploy.ps1' -Source '$($env:SERVER_PATH)' -InstallDir '$($env:INSTALL_PATH)' -Port $($env:APP_PORT) -RunAsUser '$($env:RUN_AS_USER)' -RunAsPassword '$pw' $dockerSwitch; exit `$LASTEXITCODE"
+          $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
+          plink -batch -ssh $target -pw $env:SSH_PASSWORD "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $enc"
+          if ($LASTEXITCODE) { throw "Le déploiement distant a échoué ($LASTEXITCODE)" }
